@@ -593,6 +593,12 @@
 <script>
 // ====== FONCTIONS DE SIMULATION ======
 
+const PS_LOYERS = 0.186;
+const LMNP_BUILDING_YEARS = 25;
+const LMNP_BUILDING_PCT = 0.80;
+const LMNP_FURNITURE_YEARS = 7;
+const LMNP_FURNITURE_PCT = 0.10;
+
 function annualizedReturn(final, totalPaid, y) {
   if (totalPaid <= 0 || y <= 0) return 0;
   return Math.pow(final / totalPaid, 1 / y) - 1;
@@ -610,8 +616,8 @@ function runSimulation(p) {
 
   // LMNP amort
   const isLMNP = rentTaxRegime === 'micro-bic' || rentTaxRegime === 'reel-bic';
-  const buildingAmortAnnual = isLMNP ? 0.80 * price / 25 : 0;
-  const furnitureAmortAnnual = isLMNP ? 0.10 * price / 7 : 0;
+  const buildingAmortAnnual = isLMNP ? LMNP_BUILDING_PCT * price / LMNP_BUILDING_YEARS : 0;
+  const furnitureAmortAnnual = isLMNP ? LMNP_FURNITURE_PCT * price / LMNP_FURNITURE_YEARS : 0;
 
   const acquisitionCost = price * (1 + notaire);
   const down = dcaInitial;
@@ -690,7 +696,7 @@ function runSimulation(p) {
         dcaTotalInvested += dcaEffort;
       }
 
-      const annualAmort = (y <= 25 ? buildingAmortAnnual : 0) + (y <= 7 ? furnitureAmortAnnual : 0);
+      const annualAmort = (y <= LMNP_BUILDING_YEARS ? buildingAmortAnnual : 0) + (y <= LMNP_FURNITURE_YEARS ? furnitureAmortAnnual : 0);
       cumulAmortization += annualAmort;
 
       if (rentTaxRegime === 'micro-foncier') {
@@ -741,7 +747,18 @@ function runSimulation(p) {
   const dcaTax = dcaGain > 0 ? dcaGain * dcaTaxRate : 0;
   const dcaNet = dcaFinal - dcaTax;
 
-  return { dcaNet, immoFinal };
+  return {
+    dcaNet,
+    immoFinal,
+    dcaYears,
+    immoYears,
+    monthlyPayment,
+    dcaValue,
+    dcaTotalInvested,
+    totalRentReceived,
+    totalExpenses,
+    totalRentTaxPaid,
+  };
 }
 
 // Calcule les seuils de rentabilité par dichotomie
@@ -868,13 +885,12 @@ function simuler() {
   const dcaFlatTax    = dcaTaxBtn.dataset.value !== 'tmi' ? parseFloat(dcaTaxBtn.dataset.value) : null;
   const dcaTmiBtn     = document.querySelector('#dca-tmi-toggle .active');
   const dcaTmiRate    = dcaTmiBtn ? parseFloat(dcaTmiBtn.dataset.value) : 0.30;
-  const ps            = 0.186;
-  const dcaTaxRate    = dcaFlatTax !== null ? dcaFlatTax : dcaTmiRate + ps;
+  const dcaTaxRate    = dcaFlatTax !== null ? dcaFlatTax : dcaTmiRate + PS_LOYERS;
 
   // TMI dédié aux loyers immo + PS (sélectionnable indépendamment)
   const immoTmiBtn = document.querySelector('#immo-tmi-toggle .active');
   const rentTaxTMI = immoTmiBtn ? parseFloat(immoTmiBtn.dataset.value) : 0.30;
-  const rentTaxRate = rentTaxTMI + ps;
+  const rentTaxRate = rentTaxTMI + PS_LOYERS;
 
   const price       = +document.getElementById('immo-price').value;
   let down          = +document.getElementById('immo-down').value;
@@ -901,25 +917,9 @@ function simuler() {
   const gestionPct  = +document.getElementById('immo-gestion').value / 100;
   const rentTaxRegime = document.querySelector('#rent-tax-toggle .active').dataset.value;
 
-  // --- Paramètres LMNP (amortissement) ---
-  const isLMNP = rentTaxRegime === 'micro-bic' || rentTaxRegime === 'reel-bic';
-  const lmnpBuildingAmort = 0.80; // 80% du prix, bâtiment
-  const lmnpBuildingYears = 25;
-  const lmnpFurnitureAmort = 0.10; // 10% du prix, mobilier
-  const lmnpFurnitureYears = 7;
-  const buildingAmortAnnual = isLMNP ? lmnpBuildingAmort * price / lmnpBuildingYears : 0;
-  const furnitureAmortAnnual = isLMNP ? lmnpFurnitureAmort * price / lmnpFurnitureYears : 0;
-
-  // --- IMMO préliminaires ---
-  // (déplacés après la synchro d'apport pour cohérence)
-
   // Coûts mensuels (hors crédit) — ne dépendent pas de l'apport
   const monthlyCosts = (taxeFonciere + charges * 12 + price * travaux + 300) / 12;
 
-  // --- SIMULATION PARALLÈLE DCA + IMMO ---
-  // Le DCA suit chaque mois l'effort réel de l'immo (même cash-flow)
-
-  const acquisitionCost = price * (1 + notaire);
   // L'apport initial est partagé (down = slider apport, dcaInitial synchro)
   down = dcaInitial;
   document.getElementById('immo-down').value = Math.min(down, +document.getElementById('immo-down').max);
@@ -930,178 +930,55 @@ function simuler() {
   const notaireRecalc = price * notaire;
   const effectiveDown = Math.max(0, down - notaireRecalc);
   const loanAmount = Math.max(0, price - effectiveDown);
-  let monthlyPayment = 0;
+  const simResult = runSimulation({
+    dcaInitial, growth, years, dcaTaxRate,
+    price, notaire, loanRate, loanYears,
+    rent, rentGrowth, priceGrowth,
+    taxeFonciere, charges, travaux, vacance, gestionPct,
+    rentTaxRegime, rentTaxRate,
+  });
+
+  const {
+    dcaNet,
+    immoFinal,
+    dcaYears,
+    immoYears,
+    monthlyPayment,
+    dcaTotalInvested,
+    totalRentReceived,
+    totalExpenses,
+    totalRentTaxPaid,
+  } = simResult;
+
   const monthlyRate = loanRate / 12;
-  const actualLoanNMonths = loanYears * 12;
-  if (loanRate > 0 && loanAmount > 0) {
-    monthlyPayment = loanAmount * monthlyRate * Math.pow(1 + monthlyRate, actualLoanNMonths) / (Math.pow(1 + monthlyRate, actualLoanNMonths) - 1);
-  } else if (loanAmount > 0) {
-    monthlyPayment = loanAmount / actualLoanNMonths;
-  }
-
-  const dcaYears = [];
-  const immoYears = [];
-  let dcaValue = down;
-  let dcaTotalInvested = down;
-
-  let remainingLoan = loanAmount;
-  let currentRent = rent;
-  let currentPrice = price;
-  let totalRentReceived = 0;
-  let totalExpenses = 0;
-  let totalRentTaxPaid = 0;
-  let cumulAmortization = 0; // LMNP : amortissement cumulé (impact plus-value revente)
-
-  for (let y = 0; y <= years; y++) {
-    let annualInterest = 0;
-    let annualRentRevenue = 0;
-    let annualExpenses = 0;
-    let annualRentTax = 0;
-
-    if (y > 0) {
-      currentRent *= (1 + rentGrowth);
-      currentPrice *= (1 + priceGrowth);
-
-      for (let m = 0; m < 12; m++) {
-        // --- Loan amortization ---
-        let monthlyLoanPaid = 0;
-        if (y <= loanYears && remainingLoan > 0) {
-          if (monthlyRate > 0) {
-            const interest = remainingLoan * monthlyRate;
-            const principal = monthlyPayment - interest;
-            annualInterest += interest;
-            remainingLoan = Math.max(0, remainingLoan - principal);
-          } else {
-            remainingLoan = Math.max(0, remainingLoan - monthlyPayment);
-          }
-          monthlyLoanPaid = monthlyPayment;
-        }
-        // Si y > loanYears : plus de mensualités
-
-        // Rent income (after vacancy)
-        const monthlyRent = currentRent * (1 - vacance);
-        totalRentReceived += monthlyRent;
-        annualRentRevenue += monthlyRent;
-
-        // Expenses (hors crédit)
-        const monthlyTaxe = taxeFonciere / 12;
-        const monthlyCharges = charges;
-        const monthlyTravaux = currentPrice * travaux / 12;
-        const monthlyAssurance = 300 / 12;
-        const monthlyGestion = monthlyRent * gestionPct;
-        const monthExpenses = monthlyTaxe + monthlyCharges + monthlyTravaux + monthlyAssurance + monthlyGestion;
-        totalExpenses += monthExpenses;
-        annualExpenses += monthExpenses;
-
-        // Estimation de l'impôt mensuel (selon régime)
-        // Note : l'amortissement LMNP n'est PAS déduit ici car c'est une charge non décaissée.
-        // Il réduit l'impôt annuel (patrimoine immo) mais pas le cash-flow mensuel (effort DCA).
-        const monthlyTaxEstimate = (() => {
-          if (rentTaxRegime === 'micro-foncier') return monthlyRent * 0.70 * rentTaxRate;
-          if (rentTaxRegime === 'micro-bic')    return monthlyRent * 0.50 * rentTaxRate;
-          return Math.max(0, monthlyRent - monthExpenses) * rentTaxRate; // réel foncier & réel bic
-        })();
-
-        // Cash-flow mensuel réel de l'immo (tout ce qui sort - tout ce qui rentre)
-        const monthlyCF = monthlyRent - monthlyLoanPaid - monthExpenses - monthlyTaxEstimate;
-
-        // --- DCA : investit le même effort que l'immo ce mois-ci ---
-        const dcaEffort = Math.max(0, -monthlyCF);
-        dcaValue = dcaValue * (1 + growth / 12) + dcaEffort;
-        dcaTotalInvested += dcaEffort;
-      }
-
-      // --- Annual rental income tax (exact, pour le patrimoine immo) ---
-      const annualAmort = (y <= lmnpBuildingYears ? buildingAmortAnnual : 0) + (y <= lmnpFurnitureYears ? furnitureAmortAnnual : 0);
-      cumulAmortization += annualAmort;
-
-      if (rentTaxRegime === 'micro-foncier') {
-        annualRentTax = Math.max(0, annualRentRevenue * 0.70 * rentTaxRate);
-      } else if (rentTaxRegime === 'micro-bic') {
-        annualRentTax = Math.max(0, annualRentRevenue * 0.50 * rentTaxRate);
-      } else if (rentTaxRegime === 'reel-bic') {
-        const taxableBIC = Math.max(0, annualRentRevenue - annualExpenses - annualInterest - annualAmort);
-        annualRentTax = taxableBIC * rentTaxRate;
-      } else { // réel foncier
-        const taxableRent = Math.max(0, annualRentRevenue - annualExpenses - annualInterest);
-        annualRentTax = taxableRent * rentTaxRate;
-      }
-      totalRentTaxPaid += annualRentTax;
+  const monthsPaid = Math.min(years, loanYears) * 12;
+  const remainingLoan = (() => {
+    if (loanAmount <= 0) return 0;
+    if (monthlyRate > 0) {
+      const factor = Math.pow(1 + monthlyRate, monthsPaid);
+      return Math.max(0, loanAmount * factor - monthlyPayment * (factor - 1) / monthlyRate);
     }
+    return Math.max(0, loanAmount - monthlyPayment * monthsPaid);
+  })();
+  const currentMonthlyPayment = years <= loanYears && remainingLoan > 0 ? monthlyPayment : 0;
 
-    // Year-end immo snapshot
-    const remainingDebt = Math.max(0, remainingLoan);
-    const netRentalIncome = totalRentReceived - totalExpenses - totalRentTaxPaid;
-    const salePrice = currentPrice;
-    const saleFees = salePrice * 0.06;
-    // LMNP : l'amortissement réduit le prix de revient fiscal
-    const acquisitionCostFiscal = acquisitionCost - cumulAmortization;
-    const capitalGain = salePrice - acquisitionCostFiscal;
-    const cgYearsTmp = Math.max(0, y - 5);
-    const abatement = Math.min(cgYearsTmp * 0.06, 0.60);
-    const taxableGain = Math.max(0, capitalGain * (1 - abatement));
-    const cgTax = taxableGain * (0.19 + 0.172);
-
-    const netEquity = salePrice - remainingDebt - saleFees - cgTax + netRentalIncome;
-    const netEquityBrut = salePrice - remainingDebt - saleFees + netRentalIncome; // avant impôt PV
-
-    // DCA : valeur nette d'impôt à cette année
-    const dcaGainY = dcaValue - dcaTotalInvested;
-    const dcaTaxY = dcaGainY > 0 ? dcaGainY * dcaTaxRate : 0;
-    const dcaNetY = dcaValue - dcaTaxY;
-
-    immoYears.push({
-      year: y,
-      propertyValue: currentPrice,
-      remainingLoan: remainingDebt,
-      netEquity,
-      totalPaid: down + monthlyPayment * Math.min(y, loanYears) * 12,
-      netEquityNoPV: price - remainingDebt - price * 0.06 + netRentalIncome,
-      netEquityBrut,
-    });
-
-    // Year-end DCA snapshot
-    dcaYears.push({ year: y, value: dcaValue, totalInvested: dcaTotalInvested, netValue: dcaNetY });
-  }
-
-  const immoFinal = immoYears[years].netEquity;
-
-  // Cash-flow mensuel MOYEN sur toute la période
-  const totalNetRentalIncome = totalRentReceived - totalExpenses - totalRentTaxPaid;
-  const totalLoanPayments = monthlyPayment * Math.min(loanYears, years) * 12;
-  const totalCashFlow = totalNetRentalIncome - totalLoanPayments;
-  const avgMonthlyCF = totalCashFlow / (years * 12);
-
-  // DCA : capital final, impôt et net
-  const dcaFinal = dcaValue;
-  const dcaGain = dcaFinal - dcaTotalInvested;
-  const dcaTax = dcaGain > 0 ? dcaGain * dcaTaxRate : 0;
-  const dcaNet = dcaFinal - dcaTax;
-
-  // Capital versé (identique pour les deux : DCA suit l'effort immo)
-  const immoEffectiveCapital = dcaTotalInvested;
-
-  // --- COMPARAISON ---
-  // Cashflow mensuel net d'impôt (dernière année)
-  const lastRent = currentRent;
-  const lastRentNet = lastRent * (1 - vacance);
+  const currentRent = rent * Math.pow(1 + rentGrowth, years);
+  const currentPrice = price * Math.pow(1 + priceGrowth, years);
+  const lastRentNet = currentRent * (1 - vacance);
   const lastEffGestion = lastRentNet * gestionPct;
   const lastEffCharges = (taxeFonciere + charges * 12 + currentPrice * travaux + 300) / 12;
-  // Est-ce qu'on paie encore le crédit ?
-  const isStillPayingLoan = years <= loanYears && remainingLoan > 0;
-  const currentMonthlyPayment = isStillPayingLoan ? monthlyPayment : 0;
 
   // Impôt mensuel de la dernière année (selon régime)
   const lastAnnualRent = lastRentNet * 12;
   const lastAnnualCharges = (taxeFonciere + charges * 12 + currentPrice * travaux + 300) + lastEffGestion * 12;
   let lastMonthlyTax;
-  const lastInterest = isStillPayingLoan ? remainingLoan * monthlyRate * 12 : 0;
+  const lastInterest = years <= loanYears && remainingLoan > 0 ? remainingLoan * monthlyRate * 12 : 0;
   if (rentTaxRegime === 'micro-foncier') {
     lastMonthlyTax = (lastAnnualRent * 0.70 * rentTaxRate) / 12;
   } else if (rentTaxRegime === 'micro-bic') {
     lastMonthlyTax = (lastAnnualRent * 0.50 * rentTaxRate) / 12;
   } else if (rentTaxRegime === 'reel-bic') {
-    const lastAnnualAmort = buildingAmortAnnual + furnitureAmortAnnual;
+    const lastAnnualAmort = LMNP_BUILDING_PCT * price / LMNP_BUILDING_YEARS + LMNP_FURNITURE_PCT * price / LMNP_FURNITURE_YEARS;
     lastMonthlyTax = (Math.max(0, lastAnnualRent - lastAnnualCharges - lastInterest - lastAnnualAmort) * rentTaxRate) / 12;
   } else { // réel foncier
     lastMonthlyTax = (Math.max(0, lastAnnualRent - lastAnnualCharges - lastInterest) * rentTaxRate) / 12;
@@ -1110,8 +987,13 @@ function simuler() {
   const cf = lastRentNet - currentMonthlyPayment - lastEffGestion - lastEffCharges - lastMonthlyTax;
 
   // Rendement annualisé
+  const totalNetRentalIncome = totalRentReceived - totalExpenses - totalRentTaxPaid;
+  const totalLoanPayments = monthlyPayment * Math.min(loanYears, years) * 12;
+  const totalCashFlow = totalNetRentalIncome - totalLoanPayments;
+  const avgMonthlyCF = totalCashFlow / (years * 12);
   const dcaReturn = annualizedReturn(dcaNet, dcaTotalInvested, years);
-  const immoReturn = annualizedReturn(immoFinal, immoEffectiveCapital, years);
+  const immoReturn = annualizedReturn(immoFinal, dcaTotalInvested, years);
+  const immoEffectiveCapital = dcaTotalInvested;
 
   // --- RÉCAP IMMO (encadré dans la carte) ---
   document.getElementById('recap-notaire').textContent = format(Math.round(notaireRecalc));
@@ -1174,11 +1056,12 @@ function simuler() {
   // Info fiscalité loyers
   const tmiPct = (rentTaxTMI * 100).toFixed(0);
   const taxPct = (rentTaxRate * 100).toFixed(1);
+  const psPctLabel = (PS_LOYERS * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 });
   const regimeLabels = {
-    'micro-foncier': `Nu · Abattement 30% sur les loyers, puis TMI ${tmiPct}% + PS 18,6% = ${taxPct}%`,
-    'reel-foncier': `Nu · Charges réelles + intérêts déductibles, puis TMI ${tmiPct}% + PS 18,6% = ${taxPct}%`,
-    'micro-bic':    `LMNP · Abattement 50% sur recettes, puis TMI ${tmiPct}% + PS 18,6% = ${taxPct}%`,
-    'reel-bic':     `LMNP · Charges + amort. bât. 80%/25 ans + mob. 10%/7 ans, puis TMI ${tmiPct}% + PS = ${taxPct}%`,
+    'micro-foncier': `Nu · Abattement 30% sur les loyers, puis TMI ${tmiPct}% + PS ${psPctLabel}% = ${taxPct}%`,
+    'reel-foncier': `Nu · Charges réelles + intérêts déductibles, puis TMI ${tmiPct}% + PS ${psPctLabel}% = ${taxPct}%`,
+    'micro-bic':    `LMNP · Abattement 50% sur recettes, puis TMI ${tmiPct}% + PS ${psPctLabel}% = ${taxPct}%`,
+    'reel-bic':     `LMNP · Charges + amort. bât. ${(LMNP_BUILDING_PCT * 100).toFixed(0)}%/${LMNP_BUILDING_YEARS} ans + mob. ${(LMNP_FURNITURE_PCT * 100).toFixed(0)}%/${LMNP_FURNITURE_YEARS} ans, puis TMI ${tmiPct}% + PS ${psPctLabel}% = ${taxPct}%`,
   };
   document.getElementById('rent-tax-desc').textContent = regimeLabels[rentTaxRegime] || regimeLabels['micro-foncier'];
 
@@ -1442,11 +1325,11 @@ document.querySelectorAll('#dca-tax-toggle button').forEach(btn => {
       tmiGroup.style.display = 'block';
       const tmiBtn = document.querySelector('#dca-tmi-toggle .active');
       const tmi = tmiBtn ? parseFloat(tmiBtn.dataset.value) * 100 : 30;
-      taxLabel.textContent = `TMI ${tmi}% + PS 18,6%`;
+      taxLabel.textContent = `TMI ${tmi}% + PS ${(PS_LOYERS * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })}%`;
     } else {
       tmiGroup.style.display = 'none';
       const pct = parseFloat(btn.dataset.value) * 100;
-      taxLabel.textContent = btn.dataset.value === '0.186' ? `PEA (PS ${pct}%)` : `Flat tax ${pct}%`;
+      taxLabel.textContent = btn.dataset.value === String(PS_LOYERS) ? `PEA (PS ${pct}%)` : `Flat tax ${pct}%`;
     }
     simuler();
   });
@@ -1461,7 +1344,7 @@ document.querySelectorAll('#dca-tmi-toggle button').forEach(btn => {
     document.getElementById('dca-tmi-val').textContent = `${tmiPct} %`;
     const activeToggle = document.querySelector('#dca-tax-toggle .active');
     if (activeToggle && activeToggle.dataset.value === 'tmi') {
-      document.getElementById('dca-tax-val').textContent = `TMI ${tmiPct}% + PS 18,6%`;
+      document.getElementById('dca-tax-val').textContent = `TMI ${tmiPct}% + PS ${(PS_LOYERS * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })}%`;
     }
     simuler();
   });
