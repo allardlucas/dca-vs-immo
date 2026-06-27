@@ -6,9 +6,9 @@ Comparateur interactif : **investissement financier en DCA** versus **investisse
 
 ## 📐 Architecture
 
-![Diagramme d'architecture](https://excalidraw.com/#json=EIUrCV7Qj7VyRqk691wfk,8WiZm2bQ2vXWG9NbJNeflg)
+![Diagramme d'architecture](docs/images/architecture.svg)
 
-[🔗 Ouvrir le diagramme](https://excalidraw.com/#json=EIUrCV7Qj7VyRqk691wfk,8WiZm2bQ2vXWG9NbJNeflg) — *cliquer pour explorer*
+*[🔗 Ouvrir le diagramme interactif](https://excalidraw.com/#json=EIUrCV7Qj7VyRqk691wfk,8WiZm2bQ2vXWG9NbJNeflg)*
 
 ### Vue d'ensemble
 - **🟦 Blocs bleus** : paramètres d'entrée (DCA financier + Immobilier)
