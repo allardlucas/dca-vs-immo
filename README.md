@@ -6,7 +6,7 @@ Comparateur interactif : **investissement financier en DCA** versus **investisse
 
 ## 📐 Architecture
 
-![Diagramme d'architecture](docs/images/architecture.svg)
+![Diagramme d'architecture](docs/images/architecture.png)
 
 *[🔗 Ouvrir le diagramme interactif](https://excalidraw.com/#json=EIUrCV7Qj7VyRqk691wfk,8WiZm2bQ2vXWG9NbJNeflg)*
 
