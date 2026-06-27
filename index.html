@@ -301,6 +301,24 @@
     border: 5px solid transparent;
     border-top-color: var(--accent);
   }
+
+  /* Chart tooltip flottant */
+  #chart-tooltip {
+    position: fixed;
+    background: #1a1d2e;
+    color: #e4e6f0;
+    border: 1px solid #6c5ce7;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    pointer-events: none;
+    z-index: 9999;
+    display: none;
+    line-height: 1.6;
+    white-space: nowrap;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
 </style>
 </head>
 <body>
@@ -840,7 +858,7 @@ function dessinerEtiquettesEffort(count, data, opts = {}) {
   const h = parseInt(canvas.style.height);
   if (!w || !h) return;
 
-  const pad = { top: 20, right: 16, bottom: 28, left: 56 };
+  const pad = { top: 24, right: 20, bottom: 32, left: 70 };
   const cw = w - pad.left - pad.right;
   const ch = h - pad.top - pad.bottom;
 
@@ -1107,12 +1125,14 @@ function simuler() {
     { label: 'DCA (brut)', color: '#00cec9', data: dcaYears.map(d => Math.round(d.value)) },
     { label: 'Immo (brut)', color: '#fdcb6e', data: immoYears.map(d => Math.round(d.netEquityBrut)) },
   ]);
+  enableChartTooltips('chart-brut');
 
   // 2. Après impôt
   drawLineChart('chart-net', years, [
     { label: 'DCA (net)', color: '#00cec9', data: dcaYears.map(d => Math.round(d.netValue)) },
     { label: 'Immo (net)', color: '#fdcb6e', data: immoYears.map(d => Math.round(d.netEquity)) },
   ]);
+  enableChartTooltips('chart-net');
 
   // 4. Effort DCA mensuel (mois par mois)
   const monthlyEfforts = simResult.monthlyEfforts || [];
@@ -1154,19 +1174,18 @@ function simuler() {
   // Moyenne de l'effort mensuel sur toute la période
   const avgMonthlyEffortVal = monthlyEfforts.reduce((a, b) => a + b, 0) / totalMonths;
 
+  const effortChartOpts = { xLabel: 'Années', xTickStep: xTickStep, xTickFormatter: xTickFormatter };
   drawLineChart('chart-effort', chartCount, [
     { label: 'Effort DCA', color: '#ff6b6b', data: chartData, lineWidth: 2.5 },
     { label: 'Moy.', color: '#ffd93d', data: [avgMonthlyEffortVal], horizontalLine: true, lineWidth: 2 },
-  ], {
-    xLabel: 'Années',
-    xTickStep: xTickStep,
-    xTickFormatter: xTickFormatter,
-  });
+  ], effortChartOpts);
   dessinerEtiquettesEffort(chartCount, chartData, { labelStep: xTickStep });
+  enableChartTooltips('chart-effort', effortChartOpts);
   drawLineChart('chart-nopv', years, [
     { label: 'DCA valeur', color: '#00cec9', data: dcaYears.map(d => Math.round(d.value)) },
     { label: 'Immo (hors PV)', color: '#a29bfe', data: immoYears.map(d => Math.round(d.netEquityNoPV)) },
   ]);
+  enableChartTooltips('chart-nopv');
 
   // ====== Seuils de rentabilité ======
   calculerSeuils({
@@ -1182,8 +1201,8 @@ function simuler() {
 function drawLineChart(canvasId, count, series, opts = {}) {
   const canvas = document.getElementById(canvasId);
   const rect = canvas.parentElement.getBoundingClientRect();
-  const w = Math.max(300, rect.width - 4);
-  const h = 250;
+  const w = Math.max(320, rect.width - 4);
+  const h = 260;
   const dpr = window.devicePixelRatio || 1;
   canvas.width = w * dpr;
   canvas.height = h * dpr;
@@ -1192,7 +1211,7 @@ function drawLineChart(canvasId, count, series, opts = {}) {
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
 
-  const pad = { top: 20, right: 16, bottom: 28, left: 56 };
+  const pad = { top: 24, right: 20, bottom: 32, left: 70 };
   const cw = w - pad.left - pad.right;
   const ch = h - pad.top - pad.bottom;
 
@@ -1321,6 +1340,127 @@ function drawLineChart(canvasId, count, series, opts = {}) {
       }
     }
   }
+  // Store points for tooltips
+  if (!window._chartPoints) window._chartPoints = {};
+  const pts = [];
+  for (const s of series) {
+    if (s.horizontalLine) continue;
+    for (let i = 0; i <= count; i++) {
+      const v = s.data[i];
+      if (v === undefined || isNaN(v)) continue;
+      pts.push({ label: s.label, color: s.color, x: x(i), y: y(v), value: v, index: i });
+    }
+  }
+  window._chartPoints[canvasId] = pts;
+}
+
+// ====== TOOLTILS POUR LES GRAPHIQUES ======
+function getOverlayCanvas(canvas) {
+  let overlay = document.getElementById(canvas.id + '-overlay');
+  if (!overlay) {
+    overlay = document.createElement('canvas');
+    overlay.id = canvas.id + '-overlay';
+    overlay.className = 'chart-highlight-overlay';
+    overlay.style.position = 'absolute';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.pointerEvents = 'none';
+    const parent = canvas.parentElement;
+    if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
+    parent.appendChild(overlay);
+  }
+  const dpr = window.devicePixelRatio || 1;
+  overlay.width = canvas.width;
+  overlay.height = canvas.height;
+  overlay.style.width = canvas.style.width;
+  overlay.style.height = canvas.style.height;
+  return overlay;
+}
+
+function showTooltip(point, cx, cy, idxLabel) {
+  const tip = document.getElementById('chart-tooltip');
+  if (!tip) return;
+  const valStr = format(Math.round(point.value));
+  const label = idxLabel != null ? idxLabel : 'Index ' + point.index;
+  tip.innerHTML =
+    '<div style="font-weight:600;color:' + point.color + '">' + point.label + '</div>' +
+    '<div style="font-size:1.1rem;font-weight:700;margin:2px 0">' + valStr + '</div>' +
+    '<div style="font-size:0.7rem;color:#8b8fa3">' + label + '</div>';
+  tip.style.display = 'block';
+  let left = cx + 16;
+  let top = cy - 20;
+  const tr = tip.getBoundingClientRect();
+  if (left + tr.width > window.innerWidth - 10) left = cx - tr.width - 16;
+  if (left < 6) left = 6;
+  if (top + tr.height > window.innerHeight - 10) top = cy - tr.height - 10;
+  if (top < 6) top = 6;
+  tip.style.left = left + 'px';
+  tip.style.top = top + 'px';
+}
+
+function hideTooltip() {
+  const tip = document.getElementById('chart-tooltip');
+  if (tip) tip.style.display = 'none';
+  document.querySelectorAll('.chart-highlight-overlay').forEach(c => {
+    const ctx = c.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, c.width, c.height);
+  });
+}
+
+function drawHighlight(canvas, point) {
+  const overlay = getOverlayCanvas(canvas);
+  const octx = overlay.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const w = parseFloat(canvas.style.width);
+  const h = parseFloat(canvas.style.height);
+  octx.setTransform(1, 0, 0, 1, 0, 0);
+  octx.clearRect(0, 0, overlay.width, overlay.height);
+  octx.scale(dpr, dpr);
+  octx.beginPath();
+  octx.arc(point.x, point.y, 6, 0, Math.PI * 2);
+  octx.fillStyle = point.color;
+  octx.fill();
+  octx.strokeStyle = '#ffffff';
+  octx.lineWidth = 2.5;
+  octx.stroke();
+}
+
+function enableChartTooltips(canvasId, opts) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  // Remove previous listeners
+  if (canvas._tooltipMousemove) {
+    canvas.removeEventListener('mousemove', canvas._tooltipMousemove);
+    canvas.removeEventListener('mouseleave', canvas._tooltipLeave);
+  }
+  const formatter = opts && opts.xTickFormatter ? opts.xTickFormatter : null;
+  function onMouseMove(e) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const allPts = window._chartPoints && window._chartPoints[canvasId];
+    if (!allPts || allPts.length === 0) { hideTooltip(); return; }
+    let minDistSq = Infinity, closest = null;
+    for (const p of allPts) {
+      const dx = p.x - mx, dy = p.y - my;
+      const dsq = dx * dx + dy * dy;
+      if (dsq < minDistSq) { minDistSq = dsq; closest = p; }
+    }
+    if (closest && minDistSq < 324) { // sqrt(324) = 18px
+      let idxLabel = String(closest.index);
+      if (formatter) idxLabel = formatter(closest.index);
+      showTooltip(closest, e.clientX, e.clientY, idxLabel);
+      drawHighlight(canvas, closest);
+    } else {
+      hideTooltip();
+    }
+  }
+  function onMouseLeave() { hideTooltip(); }
+  canvas._tooltipMousemove = onMouseMove;
+  canvas._tooltipLeave = onMouseLeave;
+  canvas.addEventListener('mousemove', onMouseMove);
+  canvas.addEventListener('mouseleave', onMouseLeave);
 }
 
 // ====== FORMATAGE ======
@@ -1504,5 +1644,6 @@ window.addEventListener('resize', () => {
   resizeTimer = setTimeout(simuler, 200);
 });
 </script>
+<div id="chart-tooltip"></div>
 </body>
 </html>
