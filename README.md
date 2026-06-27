@@ -4,6 +4,19 @@ Comparateur interactif : **investissement financier en DCA** versus **investisse
 
 [➡️ Ouvrir l'outil](https://allardlucas.github.io/dca-vs-immo/) *(aucune installation requise)*
 
+## 📐 Architecture
+
+![Diagramme d'architecture](https://excalidraw.com/#json=EIUrCV7Qj7VyRqk691wfk,8WiZm2bQ2vXWG9NbJNeflg)
+
+[🔗 Ouvrir le diagramme](https://excalidraw.com/#json=EIUrCV7Qj7VyRqk691wfk,8WiZm2bQ2vXWG9NbJNeflg) — *cliquer pour explorer*
+
+### Vue d'ensemble
+- **🟦 Blocs bleus** : paramètres d'entrée (DCA financier + Immobilier)
+- **🟪 Blocs violets** : cœur de la simulation (mois par mois)
+- **🟩 Blocs verts** : résultats et visualisations
+- **🟥 Blocs rouges** : analyse de sensibilité (seuil de rentabilité)
+- **🟨 Blocs jaunes** : correctifs et points d'attention
+
 ## 🔍 Principe
 
 Chaque mois, le même **effort d'épargne** est investi dans les deux approches :
