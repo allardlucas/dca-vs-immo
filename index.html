@@ -195,11 +195,17 @@
 
   canvas {
     width: 100% !important;
-    height: auto !important;
+    height: auto;
+    display: block;
     max-height: 260px;
     margin-top: 8px;
     border-radius: 8px;
     background: var(--bg);
+  }
+
+  .chart-grid-3 > div,
+  .chart-effort-wrap {
+    position: relative;
   }
 
   @media (max-width: 900px) {
@@ -572,7 +578,7 @@
       </div>
     </div>
 
-    <div style="margin-top:12px">
+    <div class="chart-effort-wrap" style="margin-top:12px">
       <div class="chart-legend">
         <span><span class="dot" style="background:var(--red)"></span> Effort DCA mensuel</span>
         <span><span class="dot" style="background:#ffd93d"></span> Moyenne</span>
@@ -617,6 +623,8 @@ const LMNP_BUILDING_YEARS = 25;
 const LMNP_BUILDING_PCT = 0.80;
 const LMNP_FURNITURE_YEARS = 7;
 const LMNP_FURNITURE_PCT = 0.10;
+
+window._chartRenderState = window._chartRenderState || {};
 
 function annualizedReturn(final, totalPaid, y) {
   if (totalPaid <= 0 || y <= 0) return 0;
@@ -1180,6 +1188,7 @@ function simuler() {
     { label: 'Moy.', color: '#ffd93d', data: [avgMonthlyEffortVal], horizontalLine: true, lineWidth: 2 },
   ], effortChartOpts);
   dessinerEtiquettesEffort(chartCount, chartData, { labelStep: xTickStep });
+  captureChartBase(document.getElementById('chart-effort'));
   enableChartTooltips('chart-effort', effortChartOpts);
   drawLineChart('chart-nopv', years, [
     { label: 'DCA valeur', color: '#00cec9', data: dcaYears.map(d => Math.round(d.value)) },
@@ -1352,29 +1361,30 @@ function drawLineChart(canvasId, count, series, opts = {}) {
     }
   }
   window._chartPoints[canvasId] = pts;
+  window._chartRenderState[canvasId] = { count, series, opts };
+  captureChartBase(canvas);
 }
 
 // ====== TOOLTILS POUR LES GRAPHIQUES ======
-function getOverlayCanvas(canvas) {
-  let overlay = document.getElementById(canvas.id + '-overlay');
-  if (!overlay) {
-    overlay = document.createElement('canvas');
-    overlay.id = canvas.id + '-overlay';
-    overlay.className = 'chart-highlight-overlay';
-    overlay.style.position = 'absolute';
-    overlay.style.top = '0';
-    overlay.style.left = '0';
-    overlay.style.pointerEvents = 'none';
-    const parent = canvas.parentElement;
-    if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
-    parent.appendChild(overlay);
+function captureChartBase(canvas) {
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  try {
+    canvas._baseImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  } catch (err) {
+    canvas._baseImageData = null;
   }
-  const dpr = window.devicePixelRatio || 1;
-  overlay.width = canvas.width;
-  overlay.height = canvas.height;
-  overlay.style.width = canvas.style.width;
-  overlay.style.height = canvas.style.height;
-  return overlay;
+  canvas._highlightKey = null;
+}
+
+function restoreChartBase(canvas) {
+  if (!canvas || !canvas._baseImageData) return false;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return false;
+  ctx.putImageData(canvas._baseImageData, 0, 0);
+  canvas._highlightKey = null;
+  return true;
 }
 
 function showTooltip(point, cx, cy, idxLabel) {
@@ -1401,29 +1411,34 @@ function showTooltip(point, cx, cy, idxLabel) {
 function hideTooltip() {
   const tip = document.getElementById('chart-tooltip');
   if (tip) tip.style.display = 'none';
-  document.querySelectorAll('.chart-highlight-overlay').forEach(c => {
-    const ctx = c.getContext('2d');
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, c.width, c.height);
-  });
+  const renderState = window._chartRenderState || {};
+  for (const canvasId of Object.keys(renderState)) {
+    const canvas = document.getElementById(canvasId);
+    if (canvas && canvas._highlightKey) restoreChartBase(canvas);
+  }
 }
 
 function drawHighlight(canvas, point) {
-  const overlay = getOverlayCanvas(canvas);
-  const octx = overlay.getContext('2d');
-  const dpr = window.devicePixelRatio || 1;
-  const w = parseFloat(canvas.style.width);
-  const h = parseFloat(canvas.style.height);
-  octx.setTransform(1, 0, 0, 1, 0, 0);
-  octx.clearRect(0, 0, overlay.width, overlay.height);
-  octx.scale(dpr, dpr);
-  octx.beginPath();
-  octx.arc(point.x, point.y, 6, 0, Math.PI * 2);
-  octx.fillStyle = point.color;
-  octx.fill();
-  octx.strokeStyle = '#ffffff';
-  octx.lineWidth = 2.5;
-  octx.stroke();
+  if (!canvas) return;
+  const key = point.label + '|' + point.index;
+  if (canvas._highlightKey !== key) {
+    if (!restoreChartBase(canvas)) {
+      const state = window._chartRenderState && window._chartRenderState[canvas.id];
+      if (state) drawLineChart(canvas.id, state.count, state.series, state.opts);
+    }
+    canvas._highlightKey = key;
+  }
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(point.x, point.y, 6, 0, Math.PI * 2);
+  ctx.fillStyle = point.color;
+  ctx.fill();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+  ctx.restore();
 }
 
 function enableChartTooltips(canvasId, opts) {
