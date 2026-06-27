@@ -799,8 +799,8 @@ function calculerSeuils(baseP) {
       const mid = (low + high) / 2;
       const r = runSimulation({ ...baseP, growth: mid });
       const diff = r.dcaNet - r.immoFinal;
-      if (diff * signLow > 0) high = mid;
-      else low = mid;
+      if (diff * signLow > 0) low = mid;
+      else high = mid;
     }
     const foundGrowth = (low + high) / 2;
     const rFinal = runSimulation({ ...baseP, growth: foundGrowth });
