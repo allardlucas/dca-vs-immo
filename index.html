@@ -195,11 +195,17 @@
 
   canvas {
     width: 100% !important;
-    height: auto !important;
+    height: auto;
+    display: block;
     max-height: 260px;
     margin-top: 8px;
     border-radius: 8px;
     background: var(--bg);
+  }
+
+  .chart-grid-3 > div,
+  .chart-effort-wrap {
+    position: relative;
   }
 
   @media (max-width: 900px) {
@@ -300,6 +306,26 @@
     transform: translateX(-50%);
     border: 5px solid transparent;
     border-top-color: var(--accent);
+  }
+
+  /* Chart tooltip flottant */
+  #chart-tooltip {
+    position: fixed;
+    background: #1a1d2e;
+    color: #e4e6f0;
+    border: 1px solid #6c5ce7;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    pointer-events: none;
+    z-index: 9999;
+    display: none;
+    line-height: 1.6;
+    white-space: normal;
+    min-width: 190px;
+    font-variant-numeric: tabular-nums;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
 </style>
 </head>
@@ -516,6 +542,17 @@
       </div>
     </div>
 
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px">
+      <div class="card">
+        <h2>🎯 Rendement locatif d'équilibre</h2>
+        <div id="seuil-rendement" style="font-size:0.9rem;color:var(--muted);line-height:1.5">Calcul en cours…</div>
+      </div>
+      <div class="card">
+        <h2>📈 Croissance DCA d'équilibre</h2>
+        <div id="seuil-croissance" style="font-size:0.9rem;color:var(--muted);line-height:1.5">Calcul en cours…</div>
+      </div>
+    </div>
+
     <div class="chart-grid-3" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
       <div>
         <div class="chart-legend">
@@ -541,6 +578,16 @@
         <canvas id="chart-nopv" height="250"></canvas>
         <div style="font-size:0.65rem;color:var(--muted);text-align:center;margin-top:2px">Capital vs Immo hors PV</div>
       </div>
+    </div>
+
+    <div class="chart-effort-wrap" style="margin-top:12px">
+      <div class="chart-legend">
+        <span><span class="dot" style="background:var(--red)"></span> Effort DCA mensuel</span>
+        <span><span class="dot" style="background:#ffd93d"></span> Moyenne</span>
+        <span style="font-size:0.7rem;color:var(--muted)">⬇ Un effort plus faible = meilleure situation</span>
+      </div>
+      <canvas id="chart-effort" height="250"></canvas>
+      <div style="font-size:0.65rem;color:var(--muted);text-align:center;margin-top:2px">Effort DCA mensuel · Ligne horizontale = moyenne sur toute la période</div>
     </div>
 
     <div style="margin-top:14px">
@@ -571,9 +618,298 @@
 </div>
 
 <script>
-// ====== ÉTAT ======
+// ====== FONCTIONS DE SIMULATION ======
 
-// ====== SIMULATION ======
+const PS_LOYERS = 0.186;
+const LMNP_BUILDING_YEARS = 25;
+const LMNP_BUILDING_PCT = 0.80;
+const LMNP_FURNITURE_YEARS = 7;
+const LMNP_FURNITURE_PCT = 0.10;
+
+window._chartRenderState = window._chartRenderState || {};
+
+function annualizedReturn(final, totalPaid, y) {
+  if (totalPaid <= 0 || y <= 0) return 0;
+  return Math.pow(final / totalPaid, 1 / y) - 1;
+}
+
+// Exécute la simulation avec des paramètres donnés (fonction pure)
+function runSimulation(p) {
+  const {
+    dcaInitial, growth, years, dcaTaxRate,
+    price, notaire, loanRate, loanYears,
+    rent, rentGrowth, priceGrowth,
+    taxeFonciere, charges, travaux, vacance, gestionPct,
+    rentTaxRegime, rentTaxRate,
+  } = p;
+
+  // LMNP amort
+  const isLMNP = rentTaxRegime === 'micro-bic' || rentTaxRegime === 'reel-bic';
+  const buildingAmortAnnual = isLMNP ? LMNP_BUILDING_PCT * price / LMNP_BUILDING_YEARS : 0;
+  const furnitureAmortAnnual = isLMNP ? LMNP_FURNITURE_PCT * price / LMNP_FURNITURE_YEARS : 0;
+
+  const acquisitionCost = price * (1 + notaire);
+  const down = dcaInitial;
+  const notaireRecalc = price * notaire;
+  const effectiveDown = Math.max(0, down - notaireRecalc);
+  const loanAmount = Math.max(0, price - effectiveDown);
+  let monthlyPayment = 0;
+  const monthlyRate = loanRate / 12;
+  const actualLoanNMonths = loanYears * 12;
+  if (loanRate > 0 && loanAmount > 0) {
+    monthlyPayment = loanAmount * monthlyRate * Math.pow(1 + monthlyRate, actualLoanNMonths) / (Math.pow(1 + monthlyRate, actualLoanNMonths) - 1);
+  } else if (loanAmount > 0) {
+    monthlyPayment = loanAmount / actualLoanNMonths;
+  }
+
+  const dcaYears = [];
+  const immoYears = [];
+  let dcaValue = down;
+  let dcaTotalInvested = down;
+  const monthlyEfforts = [];
+
+  let remainingLoan = loanAmount;
+  let currentRent = rent;
+  let currentPrice = price;
+  let totalRentReceived = 0;
+  let totalExpenses = 0;
+  let totalRentTaxPaid = 0;
+  let cumulAmortization = 0;
+
+  for (let y = 0; y <= years; y++) {
+    let annualInterest = 0;
+    let annualRentRevenue = 0;
+    let annualExpenses = 0;
+    let annualRentTax = 0;
+
+    if (y > 0) {
+      currentRent *= (1 + rentGrowth);
+      currentPrice *= (1 + priceGrowth);
+
+      for (let m = 0; m < 12; m++) {
+        let monthlyLoanPaid = 0;
+        if (y <= loanYears && remainingLoan > 0) {
+          if (monthlyRate > 0) {
+            const interest = remainingLoan * monthlyRate;
+            const principal = monthlyPayment - interest;
+            annualInterest += interest;
+            remainingLoan = Math.max(0, remainingLoan - principal);
+          } else {
+            remainingLoan = Math.max(0, remainingLoan - monthlyPayment);
+          }
+          monthlyLoanPaid = monthlyPayment;
+        }
+
+        const monthlyRent = currentRent * (1 - vacance);
+        totalRentReceived += monthlyRent;
+        annualRentRevenue += monthlyRent;
+
+        const monthlyTaxe = taxeFonciere / 12;
+        const monthlyCharges = charges;
+        const monthlyTravaux = currentPrice * travaux / 12;
+        const monthlyAssurance = 300 / 12;
+        const monthlyGestion = monthlyRent * gestionPct;
+        const monthExpenses = monthlyTaxe + monthlyCharges + monthlyTravaux + monthlyAssurance + monthlyGestion;
+        totalExpenses += monthExpenses;
+        annualExpenses += monthExpenses;
+
+        const monthlyTaxEstimate = (() => {
+          if (rentTaxRegime === 'micro-foncier') return monthlyRent * 0.70 * rentTaxRate;
+          if (rentTaxRegime === 'micro-bic')    return monthlyRent * 0.50 * rentTaxRate;
+          return Math.max(0, monthlyRent - monthExpenses) * rentTaxRate;
+        })();
+
+        const monthlyCF = monthlyRent - monthlyLoanPaid - monthExpenses - monthlyTaxEstimate;
+
+        const dcaEffort = Math.max(0, -monthlyCF);
+        monthlyEfforts.push(dcaEffort);
+        dcaValue = dcaValue * (1 + growth / 12) + dcaEffort;
+        dcaTotalInvested += dcaEffort;
+      }
+
+      const annualAmort = (y <= LMNP_BUILDING_YEARS ? buildingAmortAnnual : 0) + (y <= LMNP_FURNITURE_YEARS ? furnitureAmortAnnual : 0);
+      cumulAmortization += annualAmort;
+
+      if (rentTaxRegime === 'micro-foncier') {
+        annualRentTax = Math.max(0, annualRentRevenue * 0.70 * rentTaxRate);
+      } else if (rentTaxRegime === 'micro-bic') {
+        annualRentTax = Math.max(0, annualRentRevenue * 0.50 * rentTaxRate);
+      } else if (rentTaxRegime === 'reel-bic') {
+        const taxableBIC = Math.max(0, annualRentRevenue - annualExpenses - annualInterest - annualAmort);
+        annualRentTax = taxableBIC * rentTaxRate;
+      } else {
+        const taxableRent = Math.max(0, annualRentRevenue - annualExpenses - annualInterest);
+        annualRentTax = taxableRent * rentTaxRate;
+      }
+      totalRentTaxPaid += annualRentTax;
+    }
+
+    const remainingDebt = Math.max(0, remainingLoan);
+    const netRentalIncome = totalRentReceived - totalExpenses - totalRentTaxPaid;
+    const salePrice = currentPrice;
+    const saleFees = salePrice * 0.06;
+    const acquisitionCostFiscal = acquisitionCost - cumulAmortization;
+    const capitalGain = salePrice - acquisitionCostFiscal;
+    const cgYearsTmp = Math.max(0, y - 5);
+    const abatement = Math.min(cgYearsTmp * 0.06, 0.60);
+    const taxableGain = Math.max(0, capitalGain * (1 - abatement));
+    const cgTax = taxableGain * (0.19 + 0.172);
+
+    const netEquity = salePrice - remainingDebt - saleFees - cgTax + netRentalIncome;
+    const netEquityBrut = salePrice - remainingDebt - saleFees + netRentalIncome;
+
+    const dcaGainY = dcaValue - dcaTotalInvested;
+    const dcaTaxY = dcaGainY > 0 ? dcaGainY * dcaTaxRate : 0;
+    const dcaNetY = dcaValue - dcaTaxY;
+
+    immoYears.push({
+      year: y, propertyValue: currentPrice, remainingLoan: remainingDebt,
+      netEquity, totalPaid: down + monthlyPayment * Math.min(y, loanYears) * 12,
+      netEquityNoPV: currentPrice - remainingDebt - currentPrice * 0.06 + netRentalIncome,
+      netEquityBrut,
+    });
+
+    dcaYears.push({ year: y, value: dcaValue, totalInvested: dcaTotalInvested, netValue: dcaNetY });
+  }
+
+  const immoFinal = immoYears[years].netEquity;
+  const dcaFinal = dcaValue;
+  const dcaGain = dcaFinal - dcaTotalInvested;
+  const dcaTax = dcaGain > 0 ? dcaGain * dcaTaxRate : 0;
+  const dcaNet = dcaFinal - dcaTax;
+
+  return {
+    dcaNet,
+    immoFinal,
+    dcaYears,
+    immoYears,
+    monthlyPayment,
+    dcaValue,
+    dcaTotalInvested,
+    totalRentReceived,
+    totalExpenses,
+    totalRentTaxPaid,
+    monthlyEfforts,
+  };
+}
+
+// Calcule les seuils de rentabilité par dichotomie
+function calculerSeuils(baseP) {
+  const price = baseP.price;
+  const maxRent = price * 0.12 / 12;
+
+  // --- Seuil rendement locatif ---
+  const seuilRendEl = document.getElementById('seuil-rendement');
+  const res0 = runSimulation({ ...baseP, rent: 0 });
+  const resMax = runSimulation({ ...baseP, rent: maxRent });
+
+  const diff0 = res0.dcaNet - res0.immoFinal;
+  const diffMax = resMax.dcaNet - resMax.immoFinal;
+
+  if (diff0 <= 0 && diffMax <= 0) {
+    seuilRendEl.innerHTML = '🏠 <strong>Immo toujours gagnant</strong> (même à 0% de rendement)';
+  } else if (diff0 >= 0 && diffMax >= 0) {
+    seuilRendEl.innerHTML = '📈 <strong>DCA toujours gagnant</strong> (même à 12% de rendement)';
+  } else {
+    let low = 0, high = maxRent;
+    const signLow = diff0 > 0 ? 1 : -1;
+    for (let i = 0; i < 40; i++) {
+      const mid = (low + high) / 2;
+      const r = runSimulation({ ...baseP, rent: mid });
+      const diff = r.dcaNet - r.immoFinal;
+      if (diff * signLow > 0) low = mid;
+      else high = mid;
+    }
+    const foundRent = (low + high) / 2;
+    const yieldPct = (foundRent * 12 / price) * 100;
+    const rFinal = runSimulation({ ...baseP, rent: foundRent });
+    seuilRendEl.innerHTML =
+      `Rendement brut nécessaire : <strong>${yieldPct.toFixed(1)}%</strong>` +
+      ` (loyer ${Math.round(foundRent).toLocaleString('fr-FR')} €/mois)` +
+      ` <span style="font-size:0.75rem;color:var(--muted)">→ écart ${formatShort(Math.round(rFinal.dcaNet - rFinal.immoFinal))}</span>`;
+  }
+
+  // --- Seuil croissance DCA ---
+  const seuilCroissEl = document.getElementById('seuil-croissance');
+  const resLowG = runSimulation({ ...baseP, growth: 0 });
+  const resHighG = runSimulation({ ...baseP, growth: 0.20 });
+
+  const diffLowG = resLowG.dcaNet - resLowG.immoFinal;
+  const diffHighG = resHighG.dcaNet - resHighG.immoFinal;
+
+  if (diffLowG >= 0 && diffHighG >= 0) {
+    seuilCroissEl.innerHTML = '📈 <strong>DCA toujours gagnant</strong> (même à 0% de croissance)';
+  } else if (diffLowG <= 0 && diffHighG <= 0) {
+    seuilCroissEl.innerHTML = '🏠 <strong>Immo toujours gagnant</strong> (même à 20% de croissance)';
+  } else {
+    let low = 0, high = 0.20;
+    const signLow = diffLowG > 0 ? 1 : -1;
+    for (let i = 0; i < 40; i++) {
+      const mid = (low + high) / 2;
+      const r = runSimulation({ ...baseP, growth: mid });
+      const diff = r.dcaNet - r.immoFinal;
+      if (diff * signLow > 0) low = mid;
+      else high = mid;
+    }
+    const foundGrowth = (low + high) / 2;
+    const rFinal = runSimulation({ ...baseP, growth: foundGrowth });
+    seuilCroissEl.innerHTML =
+      `Croissance annualisée nécessaire : <strong>${(foundGrowth * 100).toFixed(1)}%</strong>` +
+      ` <span style="font-size:0.75rem;color:var(--muted)">→ écart ${formatShort(Math.round(rFinal.dcaNet - rFinal.immoFinal))}</span>`;
+  }
+}
+
+// Dessine les étiquettes de valeurs sur le graphique d'effort d'épargne
+function dessinerEtiquettesEffort(count, data, opts = {}) {
+  const canvas = document.getElementById('chart-effort');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = parseInt(canvas.style.width);
+  const h = parseInt(canvas.style.height);
+  if (!w || !h) return;
+
+  const pad = { top: 24, right: 20, bottom: 32, left: 70 };
+  const cw = w - pad.left - pad.right;
+  const ch = h - pad.top - pad.bottom;
+
+  let minVal = Infinity, maxVal = -Infinity;
+  for (const v of data) {
+    if (!isNaN(v)) { if (v < minVal) minVal = v; if (v > maxVal) maxVal = v; }
+  }
+  if (minVal === Infinity) { minVal = 0; maxVal = 1000; }
+  if (minVal === maxVal) { minVal -= 1000; maxVal += 1000; }
+  const range = maxVal - minVal || 1;
+  const padd = range * 0.1;
+  minVal -= padd; maxVal += padd;
+
+  function x(i) { return pad.left + (i / count) * cw; }
+  function yVal(v) { return pad.top + ch - ((v - minVal) / (maxVal - minVal)) * ch; }
+
+  const labelStep = opts.labelStep != null ? opts.labelStep : Math.max(1, Math.floor(data.length / 8));
+
+  ctx.save();
+  ctx.font = 'bold 11px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+
+  for (let i = 0; i < data.length; i++) {
+    const val = data[i];
+    if (val === undefined || isNaN(val)) continue;
+    if (i === 0 || i === data.length - 1 || i % labelStep === 0) {
+      const px = x(i), py = yVal(val);
+      const txt = formatShort(Math.round(val));
+      ctx.strokeStyle = 'rgba(15,17,23,0.8)';
+      ctx.lineWidth = 3;
+      ctx.lineJoin = 'round';
+      ctx.strokeText(txt, px, py - 5);
+      ctx.fillStyle = '#ff6b6b';
+      ctx.fillText(txt, px, py - 5);
+    }
+  }
+  ctx.restore();
+}
+
+// ====== SIMULATION PRINCIPALE ======
 function simuler() {
   const dcaInitial  = +document.getElementById('dca-initial').value;
   const growth      = +document.getElementById('dca-growth').value / 100;
@@ -583,13 +919,12 @@ function simuler() {
   const dcaFlatTax    = dcaTaxBtn.dataset.value !== 'tmi' ? parseFloat(dcaTaxBtn.dataset.value) : null;
   const dcaTmiBtn     = document.querySelector('#dca-tmi-toggle .active');
   const dcaTmiRate    = dcaTmiBtn ? parseFloat(dcaTmiBtn.dataset.value) : 0.30;
-  const ps            = 0.186;
-  const dcaTaxRate    = dcaFlatTax !== null ? dcaFlatTax : dcaTmiRate + ps;
+  const dcaTaxRate    = dcaFlatTax !== null ? dcaFlatTax : dcaTmiRate + PS_LOYERS;
 
   // TMI dédié aux loyers immo + PS (sélectionnable indépendamment)
   const immoTmiBtn = document.querySelector('#immo-tmi-toggle .active');
   const rentTaxTMI = immoTmiBtn ? parseFloat(immoTmiBtn.dataset.value) : 0.30;
-  const rentTaxRate = rentTaxTMI + ps;
+  const rentTaxRate = rentTaxTMI + PS_LOYERS;
 
   const price       = +document.getElementById('immo-price').value;
   let down          = +document.getElementById('immo-down').value;
@@ -616,25 +951,9 @@ function simuler() {
   const gestionPct  = +document.getElementById('immo-gestion').value / 100;
   const rentTaxRegime = document.querySelector('#rent-tax-toggle .active').dataset.value;
 
-  // --- Paramètres LMNP (amortissement) ---
-  const isLMNP = rentTaxRegime === 'micro-bic' || rentTaxRegime === 'reel-bic';
-  const lmnpBuildingAmort = 0.80; // 80% du prix, bâtiment
-  const lmnpBuildingYears = 25;
-  const lmnpFurnitureAmort = 0.10; // 10% du prix, mobilier
-  const lmnpFurnitureYears = 7;
-  const buildingAmortAnnual = isLMNP ? lmnpBuildingAmort * price / lmnpBuildingYears : 0;
-  const furnitureAmortAnnual = isLMNP ? lmnpFurnitureAmort * price / lmnpFurnitureYears : 0;
-
-  // --- IMMO préliminaires ---
-  // (déplacés après la synchro d'apport pour cohérence)
-
   // Coûts mensuels (hors crédit) — ne dépendent pas de l'apport
   const monthlyCosts = (taxeFonciere + charges * 12 + price * travaux + 300) / 12;
 
-  // --- SIMULATION PARALLÈLE DCA + IMMO ---
-  // Le DCA suit chaque mois l'effort réel de l'immo (même cash-flow)
-
-  const acquisitionCost = price * (1 + notaire);
   // L'apport initial est partagé (down = slider apport, dcaInitial synchro)
   down = dcaInitial;
   document.getElementById('immo-down').value = Math.min(down, +document.getElementById('immo-down').max);
@@ -645,178 +964,55 @@ function simuler() {
   const notaireRecalc = price * notaire;
   const effectiveDown = Math.max(0, down - notaireRecalc);
   const loanAmount = Math.max(0, price - effectiveDown);
-  let monthlyPayment = 0;
+  const simResult = runSimulation({
+    dcaInitial, growth, years, dcaTaxRate,
+    price, notaire, loanRate, loanYears,
+    rent, rentGrowth, priceGrowth,
+    taxeFonciere, charges, travaux, vacance, gestionPct,
+    rentTaxRegime, rentTaxRate,
+  });
+
+  const {
+    dcaNet,
+    immoFinal,
+    dcaYears,
+    immoYears,
+    monthlyPayment,
+    dcaTotalInvested,
+    totalRentReceived,
+    totalExpenses,
+    totalRentTaxPaid,
+  } = simResult;
+
   const monthlyRate = loanRate / 12;
-  const actualLoanNMonths = loanYears * 12;
-  if (loanRate > 0 && loanAmount > 0) {
-    monthlyPayment = loanAmount * monthlyRate * Math.pow(1 + monthlyRate, actualLoanNMonths) / (Math.pow(1 + monthlyRate, actualLoanNMonths) - 1);
-  } else if (loanAmount > 0) {
-    monthlyPayment = loanAmount / actualLoanNMonths;
-  }
-
-  const dcaYears = [];
-  const immoYears = [];
-  let dcaValue = down;
-  let dcaTotalInvested = down;
-
-  let remainingLoan = loanAmount;
-  let currentRent = rent;
-  let currentPrice = price;
-  let totalRentReceived = 0;
-  let totalExpenses = 0;
-  let totalRentTaxPaid = 0;
-  let cumulAmortization = 0; // LMNP : amortissement cumulé (impact plus-value revente)
-
-  for (let y = 0; y <= years; y++) {
-    let annualInterest = 0;
-    let annualRentRevenue = 0;
-    let annualExpenses = 0;
-    let annualRentTax = 0;
-
-    if (y > 0) {
-      currentRent *= (1 + rentGrowth);
-      currentPrice *= (1 + priceGrowth);
-
-      for (let m = 0; m < 12; m++) {
-        // --- Loan amortization ---
-        let monthlyLoanPaid = 0;
-        if (y <= loanYears && remainingLoan > 0) {
-          if (monthlyRate > 0) {
-            const interest = remainingLoan * monthlyRate;
-            const principal = monthlyPayment - interest;
-            annualInterest += interest;
-            remainingLoan = Math.max(0, remainingLoan - principal);
-          } else {
-            remainingLoan = Math.max(0, remainingLoan - monthlyPayment);
-          }
-          monthlyLoanPaid = monthlyPayment;
-        }
-        // Si y > loanYears : plus de mensualités
-
-        // Rent income (after vacancy)
-        const monthlyRent = currentRent * (1 - vacance);
-        totalRentReceived += monthlyRent;
-        annualRentRevenue += monthlyRent;
-
-        // Expenses (hors crédit)
-        const monthlyTaxe = taxeFonciere / 12;
-        const monthlyCharges = charges;
-        const monthlyTravaux = currentPrice * travaux / 12;
-        const monthlyAssurance = 300 / 12;
-        const monthlyGestion = monthlyRent * gestionPct;
-        const monthExpenses = monthlyTaxe + monthlyCharges + monthlyTravaux + monthlyAssurance + monthlyGestion;
-        totalExpenses += monthExpenses;
-        annualExpenses += monthExpenses;
-
-        // Estimation de l'impôt mensuel (selon régime)
-        // Note : l'amortissement LMNP n'est PAS déduit ici car c'est une charge non décaissée.
-        // Il réduit l'impôt annuel (patrimoine immo) mais pas le cash-flow mensuel (effort DCA).
-        const monthlyTaxEstimate = (() => {
-          if (rentTaxRegime === 'micro-foncier') return monthlyRent * 0.70 * rentTaxRate;
-          if (rentTaxRegime === 'micro-bic')    return monthlyRent * 0.50 * rentTaxRate;
-          return Math.max(0, monthlyRent - monthExpenses) * rentTaxRate; // réel foncier & réel bic
-        })();
-
-        // Cash-flow mensuel réel de l'immo (tout ce qui sort - tout ce qui rentre)
-        const monthlyCF = monthlyRent - monthlyLoanPaid - monthExpenses - monthlyTaxEstimate;
-
-        // --- DCA : investit le même effort que l'immo ce mois-ci ---
-        const dcaEffort = Math.max(0, -monthlyCF);
-        dcaValue = dcaValue * (1 + growth / 12) + dcaEffort;
-        dcaTotalInvested += dcaEffort;
-      }
-
-      // --- Annual rental income tax (exact, pour le patrimoine immo) ---
-      const annualAmort = (y <= lmnpBuildingYears ? buildingAmortAnnual : 0) + (y <= lmnpFurnitureYears ? furnitureAmortAnnual : 0);
-      cumulAmortization += annualAmort;
-
-      if (rentTaxRegime === 'micro-foncier') {
-        annualRentTax = Math.max(0, annualRentRevenue * 0.70 * rentTaxRate);
-      } else if (rentTaxRegime === 'micro-bic') {
-        annualRentTax = Math.max(0, annualRentRevenue * 0.50 * rentTaxRate);
-      } else if (rentTaxRegime === 'reel-bic') {
-        const taxableBIC = Math.max(0, annualRentRevenue - annualExpenses - annualInterest - annualAmort);
-        annualRentTax = taxableBIC * rentTaxRate;
-      } else { // réel foncier
-        const taxableRent = Math.max(0, annualRentRevenue - annualExpenses - annualInterest);
-        annualRentTax = taxableRent * rentTaxRate;
-      }
-      totalRentTaxPaid += annualRentTax;
+  const monthsPaid = Math.min(years, loanYears) * 12;
+  const remainingLoan = (() => {
+    if (loanAmount <= 0) return 0;
+    if (monthlyRate > 0) {
+      const factor = Math.pow(1 + monthlyRate, monthsPaid);
+      return Math.max(0, loanAmount * factor - monthlyPayment * (factor - 1) / monthlyRate);
     }
+    return Math.max(0, loanAmount - monthlyPayment * monthsPaid);
+  })();
+  const currentMonthlyPayment = years <= loanYears && remainingLoan > 0 ? monthlyPayment : 0;
 
-    // Year-end immo snapshot
-    const remainingDebt = Math.max(0, remainingLoan);
-    const netRentalIncome = totalRentReceived - totalExpenses - totalRentTaxPaid;
-    const salePrice = currentPrice;
-    const saleFees = salePrice * 0.06;
-    // LMNP : l'amortissement réduit le prix de revient fiscal
-    const acquisitionCostFiscal = acquisitionCost - cumulAmortization;
-    const capitalGain = salePrice - acquisitionCostFiscal;
-    const cgYearsTmp = Math.max(0, y - 5);
-    const abatement = Math.min(cgYearsTmp * 0.06, 0.60);
-    const taxableGain = Math.max(0, capitalGain * (1 - abatement));
-    const cgTax = taxableGain * (0.19 + 0.172);
-
-    const netEquity = salePrice - remainingDebt - saleFees - cgTax + netRentalIncome;
-    const netEquityBrut = salePrice - remainingDebt - saleFees + netRentalIncome; // avant impôt PV
-
-    // DCA : valeur nette d'impôt à cette année
-    const dcaGainY = dcaValue - dcaTotalInvested;
-    const dcaTaxY = dcaGainY > 0 ? dcaGainY * dcaTaxRate : 0;
-    const dcaNetY = dcaValue - dcaTaxY;
-
-    immoYears.push({
-      year: y,
-      propertyValue: currentPrice,
-      remainingLoan: remainingDebt,
-      netEquity,
-      totalPaid: down + monthlyPayment * Math.min(y, loanYears) * 12,
-      netEquityNoPV: price - remainingDebt - price * 0.06 + netRentalIncome,
-      netEquityBrut,
-    });
-
-    // Year-end DCA snapshot
-    dcaYears.push({ year: y, value: dcaValue, totalInvested: dcaTotalInvested, netValue: dcaNetY });
-  }
-
-  const immoFinal = immoYears[years].netEquity;
-
-  // Cash-flow mensuel MOYEN sur toute la période
-  const totalNetRentalIncome = totalRentReceived - totalExpenses - totalRentTaxPaid;
-  const totalLoanPayments = monthlyPayment * Math.min(loanYears, years) * 12;
-  const totalCashFlow = totalNetRentalIncome - totalLoanPayments;
-  const avgMonthlyCF = totalCashFlow / (years * 12);
-
-  // DCA : capital final, impôt et net
-  const dcaFinal = dcaValue;
-  const dcaGain = dcaFinal - dcaTotalInvested;
-  const dcaTax = dcaGain > 0 ? dcaGain * dcaTaxRate : 0;
-  const dcaNet = dcaFinal - dcaTax;
-
-  // Capital versé (identique pour les deux : DCA suit l'effort immo)
-  const immoEffectiveCapital = dcaTotalInvested;
-
-  // --- COMPARAISON ---
-  // Cashflow mensuel net d'impôt (dernière année)
-  const lastRent = currentRent;
-  const lastRentNet = lastRent * (1 - vacance);
+  const currentRent = rent * Math.pow(1 + rentGrowth, years);
+  const currentPrice = price * Math.pow(1 + priceGrowth, years);
+  const lastRentNet = currentRent * (1 - vacance);
   const lastEffGestion = lastRentNet * gestionPct;
   const lastEffCharges = (taxeFonciere + charges * 12 + currentPrice * travaux + 300) / 12;
-  // Est-ce qu'on paie encore le crédit ?
-  const isStillPayingLoan = years <= loanYears && remainingLoan > 0;
-  const currentMonthlyPayment = isStillPayingLoan ? monthlyPayment : 0;
 
   // Impôt mensuel de la dernière année (selon régime)
   const lastAnnualRent = lastRentNet * 12;
   const lastAnnualCharges = (taxeFonciere + charges * 12 + currentPrice * travaux + 300) + lastEffGestion * 12;
   let lastMonthlyTax;
-  const lastInterest = isStillPayingLoan ? remainingLoan * monthlyRate * 12 : 0;
+  const lastInterest = years <= loanYears && remainingLoan > 0 ? remainingLoan * monthlyRate * 12 : 0;
   if (rentTaxRegime === 'micro-foncier') {
     lastMonthlyTax = (lastAnnualRent * 0.70 * rentTaxRate) / 12;
   } else if (rentTaxRegime === 'micro-bic') {
     lastMonthlyTax = (lastAnnualRent * 0.50 * rentTaxRate) / 12;
   } else if (rentTaxRegime === 'reel-bic') {
-    const lastAnnualAmort = buildingAmortAnnual + furnitureAmortAnnual;
+    const lastAnnualAmort = LMNP_BUILDING_PCT * price / LMNP_BUILDING_YEARS + LMNP_FURNITURE_PCT * price / LMNP_FURNITURE_YEARS;
     lastMonthlyTax = (Math.max(0, lastAnnualRent - lastAnnualCharges - lastInterest - lastAnnualAmort) * rentTaxRate) / 12;
   } else { // réel foncier
     lastMonthlyTax = (Math.max(0, lastAnnualRent - lastAnnualCharges - lastInterest) * rentTaxRate) / 12;
@@ -825,12 +1021,13 @@ function simuler() {
   const cf = lastRentNet - currentMonthlyPayment - lastEffGestion - lastEffCharges - lastMonthlyTax;
 
   // Rendement annualisé
-  function annualizedReturn(final, totalPaid, years) {
-    if (totalPaid <= 0 || years <= 0) return 0;
-    return Math.pow(final / totalPaid, 1 / years) - 1;
-  }
+  const totalNetRentalIncome = totalRentReceived - totalExpenses - totalRentTaxPaid;
+  const totalLoanPayments = monthlyPayment * Math.min(loanYears, years) * 12;
+  const totalCashFlow = totalNetRentalIncome - totalLoanPayments;
+  const avgMonthlyCF = totalCashFlow / (years * 12);
   const dcaReturn = annualizedReturn(dcaNet, dcaTotalInvested, years);
-  const immoReturn = annualizedReturn(immoFinal, immoEffectiveCapital, years);
+  const immoReturn = annualizedReturn(immoFinal, dcaTotalInvested, years);
+  const immoEffectiveCapital = dcaTotalInvested;
 
   // --- RÉCAP IMMO (encadré dans la carte) ---
   document.getElementById('recap-notaire').textContent = format(Math.round(notaireRecalc));
@@ -893,11 +1090,12 @@ function simuler() {
   // Info fiscalité loyers
   const tmiPct = (rentTaxTMI * 100).toFixed(0);
   const taxPct = (rentTaxRate * 100).toFixed(1);
+  const psPctLabel = (PS_LOYERS * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 });
   const regimeLabels = {
-    'micro-foncier': `Nu · Abattement 30% sur les loyers, puis TMI ${tmiPct}% + PS 18,6% = ${taxPct}%`,
-    'reel-foncier': `Nu · Charges réelles + intérêts déductibles, puis TMI ${tmiPct}% + PS 18,6% = ${taxPct}%`,
-    'micro-bic':    `LMNP · Abattement 50% sur recettes, puis TMI ${tmiPct}% + PS 18,6% = ${taxPct}%`,
-    'reel-bic':     `LMNP · Charges + amort. bât. 80%/25 ans + mob. 10%/7 ans, puis TMI ${tmiPct}% + PS = ${taxPct}%`,
+    'micro-foncier': `Nu · Abattement 30% sur les loyers, puis TMI ${tmiPct}% + PS ${psPctLabel}% = ${taxPct}%`,
+    'reel-foncier': `Nu · Charges réelles + intérêts déductibles, puis TMI ${tmiPct}% + PS ${psPctLabel}% = ${taxPct}%`,
+    'micro-bic':    `LMNP · Abattement 50% sur recettes, puis TMI ${tmiPct}% + PS ${psPctLabel}% = ${taxPct}%`,
+    'reel-bic':     `LMNP · Charges + amort. bât. ${(LMNP_BUILDING_PCT * 100).toFixed(0)}%/${LMNP_BUILDING_YEARS} ans + mob. ${(LMNP_FURNITURE_PCT * 100).toFixed(0)}%/${LMNP_FURNITURE_YEARS} ans, puis TMI ${tmiPct}% + PS ${psPctLabel}% = ${taxPct}%`,
   };
   document.getElementById('rent-tax-desc').textContent = regimeLabels[rentTaxRegime] || regimeLabels['micro-foncier'];
 
@@ -937,26 +1135,85 @@ function simuler() {
     { label: 'DCA (brut)', color: '#00cec9', data: dcaYears.map(d => Math.round(d.value)) },
     { label: 'Immo (brut)', color: '#fdcb6e', data: immoYears.map(d => Math.round(d.netEquityBrut)) },
   ]);
+  enableChartTooltips('chart-brut');
 
   // 2. Après impôt
   drawLineChart('chart-net', years, [
     { label: 'DCA (net)', color: '#00cec9', data: dcaYears.map(d => Math.round(d.netValue)) },
     { label: 'Immo (net)', color: '#fdcb6e', data: immoYears.map(d => Math.round(d.netEquity)) },
   ]);
+  enableChartTooltips('chart-net');
 
-  // 3. Capital vs Immo hors PV latente
+  // 4. Effort DCA mensuel (mois par mois)
+  const monthlyEfforts = simResult.monthlyEfforts || [];
+  const totalMonths = monthlyEfforts.length;
+  const MAX_POINTS = 216; // ~18 ans × 12 mois
+
+  let chartData, chartCount, xTickStep, xTickFormatter;
+
+  if (totalMonths <= MAX_POINTS) {
+    // Données mensuelles brutes
+    chartData = monthlyEfforts;
+    chartCount = totalMonths;
+    xTickStep = Math.min(12, Math.max(1, Math.floor(chartCount / 6)));
+    xTickFormatter = i => {
+      const yr = Math.floor(i / 12) + 1;
+      return yr <= 1 ? 'An 1' : `An ${yr}`;
+    };
+  } else {
+    // Moyenné par trimestre (3 mois)
+    const bucketSize = 3;
+    const aggregated = [];
+    for (let i = 0; i < totalMonths; i += bucketSize) {
+      let sum = 0, cnt = 0;
+      for (let j = 0; j < bucketSize && i + j < totalMonths; j++) {
+        sum += monthlyEfforts[i + j];
+        cnt++;
+      }
+      aggregated.push(Math.round(sum / cnt));
+    }
+    chartData = aggregated;
+    chartCount = aggregated.length;
+    xTickStep = Math.min(4, Math.max(1, Math.floor(chartCount / 6)));
+    xTickFormatter = i => {
+      const yr = Math.floor(i / 4) + 1;
+      return yr <= 1 ? 'An 1' : `An ${yr}`;
+    };
+  }
+
+  // Moyenne de l'effort mensuel sur toute la période
+  const avgMonthlyEffortVal = monthlyEfforts.reduce((a, b) => a + b, 0) / totalMonths;
+
+  const effortChartOpts = { xLabel: 'Années', xTickStep: xTickStep, xTickFormatter: xTickFormatter };
+  drawLineChart('chart-effort', chartCount, [
+    { label: 'Effort DCA', color: '#ff6b6b', data: chartData, lineWidth: 2.5 },
+    { label: 'Moy.', color: '#ffd93d', data: [avgMonthlyEffortVal], horizontalLine: true, lineWidth: 2 },
+  ], effortChartOpts);
+  dessinerEtiquettesEffort(chartCount, chartData, { labelStep: xTickStep });
+  captureChartBase(document.getElementById('chart-effort'));
+  enableChartTooltips('chart-effort', effortChartOpts);
   drawLineChart('chart-nopv', years, [
     { label: 'DCA valeur', color: '#00cec9', data: dcaYears.map(d => Math.round(d.value)) },
     { label: 'Immo (hors PV)', color: '#a29bfe', data: immoYears.map(d => Math.round(d.netEquityNoPV)) },
   ]);
+  enableChartTooltips('chart-nopv');
+
+  // ====== Seuils de rentabilité ======
+  calculerSeuils({
+    dcaInitial, growth, years, dcaTaxRate,
+    price, notaire, loanRate, loanYears,
+    rent, rentGrowth, priceGrowth,
+    taxeFonciere, charges, travaux, vacance, gestionPct,
+    rentTaxRegime, rentTaxRate,
+  });
 }
 
 // ====== CHART ======
-function drawLineChart(canvasId, years, series) {
+function drawLineChart(canvasId, count, series, opts = {}) {
   const canvas = document.getElementById(canvasId);
   const rect = canvas.parentElement.getBoundingClientRect();
-  const w = Math.max(300, rect.width - 4);
-  const h = 250;
+  const w = Math.max(320, rect.width - 4);
+  const h = 260;
   const dpr = window.devicePixelRatio || 1;
   canvas.width = w * dpr;
   canvas.height = h * dpr;
@@ -965,24 +1222,27 @@ function drawLineChart(canvasId, years, series) {
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
 
-  const pad = { top: 20, right: 16, bottom: 28, left: 56 };
+  const pad = { top: 24, right: 20, bottom: 32, left: 70 };
   const cw = w - pad.left - pad.right;
   const ch = h - pad.top - pad.bottom;
 
+  // Find min/max excluding horizontal-line series
   let minVal = Infinity, maxVal = -Infinity;
   for (const s of series) {
+    if (s.horizontalLine) continue;
     for (const v of s.data) {
-      if (v < minVal) minVal = v;
-      if (v > maxVal) maxVal = v;
+      if (!isNaN(v) && v < minVal) minVal = v;
+      if (!isNaN(v) && v > maxVal) maxVal = v;
     }
   }
+  if (minVal === Infinity) { minVal = 0; maxVal = 1000; }
   if (minVal === maxVal) { minVal -= 1000; maxVal += 1000; }
   const range = maxVal - minVal || 1;
   const padding = range * 0.1;
   minVal -= padding;
   maxVal += padding;
 
-  function x(i) { return pad.left + (i / years) * cw; }
+  function x(i) { return pad.left + (i / count) * cw; }
   function y(v) { return pad.top + ch - ((v - minVal) / (maxVal - minVal)) * ch; }
 
   ctx.clearRect(0, 0, w, h);
@@ -1006,34 +1266,83 @@ function drawLineChart(canvasId, years, series) {
     ctx.fillText(formatShort(val), pad.left - 6, pad.top + (i / nGrid) * ch);
   }
 
+  // X-axis labels
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  for (let i = 0; i <= years; i++) {
-    if (i % 5 === 0 || i === years) {
-      ctx.fillText(i, x(i), h - pad.bottom + 6);
+  if (opts.xTickStep != null) {
+    const fmt = opts.xTickFormatter || (i => String(i));
+    for (let i = 0; i <= count; i++) {
+      if (i % opts.xTickStep === 0 || i === count) {
+        ctx.fillText(fmt(i), x(i), h - pad.bottom + 6);
+      }
+    }
+  } else {
+    // Default: every 5 years (backward compat)
+    for (let i = 0; i <= count; i++) {
+      if (i % 5 === 0 || i === count) {
+        ctx.fillText(String(i), x(i), h - pad.bottom + 6);
+      }
     }
   }
 
   ctx.fillStyle = '#8b8fa3';
   ctx.font = '9px sans-serif';
-  ctx.fillText('Années', w / 2, h - 4);
+  ctx.fillText(opts.xLabel || 'Années', w / 2, h - 4);
 
+  // Draw series
   for (const s of series) {
+    if (s.horizontalLine) {
+      // Horizontal dashed line at the average of the data values
+      const mean = s.data.reduce((a, b) => a + b, 0) / s.data.length;
+      const yMean = y(mean);
+      ctx.save();
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = s.lineWidth || 1.5;
+      ctx.beginPath();
+      ctx.moveTo(pad.left, yMean);
+      ctx.lineTo(w - pad.right, yMean);
+      ctx.stroke();
+      ctx.restore();
+      // Label on the right side
+      ctx.save();
+      ctx.fillStyle = s.color;
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+      const txt = (s.label || 'Moy.') + ' ' + formatShort(Math.round(mean));
+      ctx.strokeStyle = 'rgba(15,17,23,0.8)';
+      ctx.lineWidth = 3;
+      ctx.lineJoin = 'round';
+      ctx.strokeText(txt, w - pad.right + 4, yMean - 2);
+      ctx.fillText(txt, w - pad.right + 4, yMean - 2);
+      ctx.restore();
+      continue;
+    }
+
+    // Regular line
     ctx.strokeStyle = s.color;
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = s.lineWidth || 2.5;
     ctx.lineJoin = 'round';
     ctx.beginPath();
-    for (let i = 0; i <= years; i++) {
-      const px = x(i), py = y(s.data[i]);
-      if (i === 0) ctx.moveTo(px, py);
+    let started = false;
+    for (let i = 0; i <= count; i++) {
+      const v = s.data[i];
+      if (v === undefined || isNaN(v)) continue;
+      const px = x(i), py = y(v);
+      if (!started) { ctx.moveTo(px, py); started = true; }
       else ctx.lineTo(px, py);
     }
     ctx.stroke();
 
-    for (let i = 0; i <= years; i++) {
-      if (i % 5 === 0 || i === years) {
+    // Dots at visible intervals
+    const dotStep = opts.xTickStep != null ? opts.xTickStep : 5;
+    for (let i = 0; i <= count; i++) {
+      const v = s.data[i];
+      if (v === undefined || isNaN(v)) continue;
+      if (i % dotStep === 0 || i === count) {
         ctx.beginPath();
-        ctx.arc(x(i), y(s.data[i]), 3, 0, Math.PI * 2);
+        ctx.arc(x(i), y(v), 3, 0, Math.PI * 2);
         ctx.fillStyle = s.color;
         ctx.fill();
         ctx.strokeStyle = '#0f1117';
@@ -1042,6 +1351,178 @@ function drawLineChart(canvasId, years, series) {
       }
     }
   }
+  // Store points for tooltips
+  if (!window._chartPoints) window._chartPoints = {};
+  const pts = [];
+  for (const s of series) {
+    if (s.horizontalLine) continue;
+    for (let i = 0; i <= count; i++) {
+      const v = s.data[i];
+      if (v === undefined || isNaN(v)) continue;
+      pts.push({ label: s.label, color: s.color, x: x(i), y: y(v), value: v, index: i });
+    }
+  }
+  window._chartPoints[canvasId] = pts;
+  window._chartRenderState[canvasId] = { count, series, opts };
+  captureChartBase(canvas);
+}
+
+// ====== TOOLTILS POUR LES GRAPHIQUES ======
+function captureChartBase(canvas) {
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  try {
+    canvas._baseImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  } catch (err) {
+    canvas._baseImageData = null;
+  }
+  canvas._highlightKey = null;
+}
+
+function restoreChartBase(canvas) {
+  if (!canvas || !canvas._baseImageData) return false;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return false;
+  ctx.putImageData(canvas._baseImageData, 0, 0);
+  canvas._highlightKey = null;
+  return true;
+}
+
+function showTooltip(canvasId, cx, cy, hoverIndex) {
+  const tip = document.getElementById('chart-tooltip');
+  if (!tip) return;
+  const points = (window._chartPoints && window._chartPoints[canvasId]) || [];
+  const hoverPoints = points.filter(p => p.index === hoverIndex);
+  if (!hoverPoints.length) {
+    hideTooltip();
+    return;
+  }
+
+  const renderState = window._chartRenderState && window._chartRenderState[canvasId];
+  const formatter = renderState && renderState.opts && renderState.opts.xTickFormatter
+    ? renderState.opts.xTickFormatter
+    : null;
+  const label = formatter ? formatter(hoverIndex) : 'Année ' + hoverIndex;
+
+  tip.innerHTML = '';
+  for (const point of hoverPoints) {
+    const row = document.createElement('div');
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+    row.style.justifyContent = 'space-between';
+    row.style.gap = '14px';
+
+    const name = document.createElement('span');
+    name.textContent = point.label;
+    name.style.color = point.color;
+    name.style.fontWeight = '600';
+
+    const value = document.createElement('span');
+    value.textContent = format(Math.round(point.value));
+    value.style.fontWeight = '700';
+    value.style.textAlign = 'right';
+
+    row.appendChild(name);
+    row.appendChild(value);
+    tip.appendChild(row);
+  }
+
+  const separator = document.createElement('div');
+  separator.style.height = '1px';
+  separator.style.margin = '6px 0';
+  separator.style.background = 'rgba(255,255,255,0.18)';
+  tip.appendChild(separator);
+
+  const idx = document.createElement('div');
+  idx.style.fontSize = '0.7rem';
+  idx.style.color = '#8b8fa3';
+  idx.textContent = label;
+  tip.appendChild(idx);
+
+  tip.style.display = 'block';
+  let left = cx + 16;
+  let top = cy - 20;
+  const tr = tip.getBoundingClientRect();
+  if (left + tr.width > window.innerWidth - 10) left = cx - tr.width - 16;
+  if (left < 6) left = 6;
+  if (top + tr.height > window.innerHeight - 10) top = cy - tr.height - 10;
+  if (top < 6) top = 6;
+  tip.style.left = left + 'px';
+  tip.style.top = top + 'px';
+}
+
+function hideTooltip() {
+  const tip = document.getElementById('chart-tooltip');
+  if (tip) tip.style.display = 'none';
+  const renderState = window._chartRenderState || {};
+  for (const canvasId of Object.keys(renderState)) {
+    const canvas = document.getElementById(canvasId);
+    if (canvas && canvas._highlightKey) restoreChartBase(canvas);
+  }
+}
+
+function drawHighlight(canvas, points) {
+  if (!canvas) return;
+  const hoverPoints = Array.isArray(points) ? points : (points ? [points] : []);
+  if (!hoverPoints.length) return;
+  const key = String(hoverPoints[0].index);
+  if (canvas._highlightKey !== key) {
+    if (!restoreChartBase(canvas)) {
+      const state = window._chartRenderState && window._chartRenderState[canvas.id];
+      if (state) drawLineChart(canvas.id, state.count, state.series, state.opts);
+    }
+    canvas._highlightKey = key;
+  }
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.save();
+  for (const point of hoverPoints) {
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = point.color;
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function enableChartTooltips(canvasId, opts) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  // Remove previous listeners
+  if (canvas._tooltipMousemove) {
+    canvas.removeEventListener('mousemove', canvas._tooltipMousemove);
+    canvas.removeEventListener('mouseleave', canvas._tooltipLeave);
+  }
+  function onMouseMove(e) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const allPts = window._chartPoints && window._chartPoints[canvasId];
+    if (!allPts || allPts.length === 0) { hideTooltip(); return; }
+    let minDist = Infinity, closestIndex = null;
+    for (const p of allPts) {
+      const dx = Math.abs(p.x - mx);
+      if (dx < minDist) {
+        minDist = dx;
+        closestIndex = p.index;
+      }
+    }
+    if (closestIndex != null && minDist < 18) {
+      const hoverPoints = allPts.filter(p => p.index === closestIndex);
+      showTooltip(canvasId, e.clientX, e.clientY, closestIndex);
+      drawHighlight(canvas, hoverPoints);
+    } else {
+      hideTooltip();
+    }
+  }
+  function onMouseLeave() { hideTooltip(); }
+  canvas._tooltipMousemove = onMouseMove;
+  canvas._tooltipLeave = onMouseLeave;
+  canvas.addEventListener('mousemove', onMouseMove);
+  canvas.addEventListener('mouseleave', onMouseLeave);
 }
 
 // ====== FORMATAGE ======
@@ -1144,11 +1625,11 @@ document.querySelectorAll('#dca-tax-toggle button').forEach(btn => {
       tmiGroup.style.display = 'block';
       const tmiBtn = document.querySelector('#dca-tmi-toggle .active');
       const tmi = tmiBtn ? parseFloat(tmiBtn.dataset.value) * 100 : 30;
-      taxLabel.textContent = `TMI ${tmi}% + PS 18,6%`;
+      taxLabel.textContent = `TMI ${tmi}% + PS ${(PS_LOYERS * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })}%`;
     } else {
       tmiGroup.style.display = 'none';
       const pct = parseFloat(btn.dataset.value) * 100;
-      taxLabel.textContent = btn.dataset.value === '0.186' ? `PEA (PS ${pct}%)` : `Flat tax ${pct}%`;
+      taxLabel.textContent = btn.dataset.value === String(PS_LOYERS) ? `PEA (PS ${pct}%)` : `Flat tax ${pct}%`;
     }
     simuler();
   });
@@ -1163,7 +1644,7 @@ document.querySelectorAll('#dca-tmi-toggle button').forEach(btn => {
     document.getElementById('dca-tmi-val').textContent = `${tmiPct} %`;
     const activeToggle = document.querySelector('#dca-tax-toggle .active');
     if (activeToggle && activeToggle.dataset.value === 'tmi') {
-      document.getElementById('dca-tax-val').textContent = `TMI ${tmiPct}% + PS 18,6%`;
+      document.getElementById('dca-tax-val').textContent = `TMI ${tmiPct}% + PS ${(PS_LOYERS * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })}%`;
     }
     simuler();
   });
@@ -1225,5 +1706,6 @@ window.addEventListener('resize', () => {
   resizeTimer = setTimeout(simuler, 200);
 });
 </script>
+<div id="chart-tooltip"></div>
 </body>
 </html>
