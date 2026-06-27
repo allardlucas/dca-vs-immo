@@ -548,7 +548,7 @@
         <span><span class="dot" style="background:var(--red)"></span> Effort d'épargne annuel (immo)</span>
         <span style="font-size:0.7rem;color:var(--muted)">⬇ Un effort plus faible = meilleure situation</span>
       </div>
-      <canvas id="chart-effort" height="220"></canvas>
+      <canvas id="chart-effort" height="250"></canvas>
       <div style="font-size:0.65rem;color:var(--muted);text-align:center;margin-top:2px">Effort d'épargne par année — décroît avec la hausse des loyers</div>
     </div>
 
@@ -953,13 +953,13 @@ function simuler() {
     { label: 'Immo (net)', color: '#fdcb6e', data: immoYears.map(d => Math.round(d.netEquity)) },
   ]);
 
-  // 4. Effort d'épargne par année
+  // 4. Effort d'épargne par année (hors apport initial)
   const effortByYear = dcaYears.map((d, y) => {
     const prev = y > 0 ? dcaYears[y-1].totalInvested : 0;
-    return Math.round(d.totalInvested - prev);
+    return y === 0 ? NaN : Math.round(d.totalInvested - prev);
   });
   drawLineChart('chart-effort', years, [
-    { label: 'Effort annuel', color: '#e17055', data: effortByYear },
+    { label: 'Effort annuel', color: '#ff6b6b', data: effortByYear, lineWidth: 3 },
   ]);
   drawLineChart('chart-nopv', years, [
     { label: 'DCA valeur', color: '#00cec9', data: dcaYears.map(d => Math.round(d.value)) },
@@ -1036,7 +1036,7 @@ function drawLineChart(canvasId, years, series) {
 
   for (const s of series) {
     ctx.strokeStyle = s.color;
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = s.lineWidth || 2.5;
     ctx.lineJoin = 'round';
     ctx.beginPath();
     for (let i = 0; i <= years; i++) {
