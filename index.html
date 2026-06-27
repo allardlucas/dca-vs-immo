@@ -556,11 +556,12 @@
 
     <div style="margin-top:12px">
       <div class="chart-legend">
-        <span><span class="dot" style="background:var(--red)"></span> Effort d'épargne annuel (immo)</span>
+        <span><span class="dot" style="background:var(--red)"></span> Effort DCA mensuel</span>
+        <span><span class="dot" style="background:#ffd93d"></span> Moyenne</span>
         <span style="font-size:0.7rem;color:var(--muted)">⬇ Un effort plus faible = meilleure situation</span>
       </div>
       <canvas id="chart-effort" height="250"></canvas>
-      <div style="font-size:0.65rem;color:var(--muted);text-align:center;margin-top:2px">Effort d'épargne par année — décroît avec la hausse des loyers</div>
+      <div style="font-size:0.65rem;color:var(--muted);text-align:center;margin-top:2px">Effort DCA mensuel · Ligne horizontale = moyenne sur toute la période</div>
     </div>
 
     <div style="margin-top:14px">
@@ -637,6 +638,7 @@ function runSimulation(p) {
   const immoYears = [];
   let dcaValue = down;
   let dcaTotalInvested = down;
+  const monthlyEfforts = [];
 
   let remainingLoan = loanAmount;
   let currentRent = rent;
@@ -692,6 +694,7 @@ function runSimulation(p) {
         const monthlyCF = monthlyRent - monthlyLoanPaid - monthExpenses - monthlyTaxEstimate;
 
         const dcaEffort = Math.max(0, -monthlyCF);
+        monthlyEfforts.push(dcaEffort);
         dcaValue = dcaValue * (1 + growth / 12) + dcaEffort;
         dcaTotalInvested += dcaEffort;
       }
@@ -758,6 +761,7 @@ function runSimulation(p) {
     totalRentReceived,
     totalExpenses,
     totalRentTaxPaid,
+    monthlyEfforts,
   };
 }
 
@@ -828,7 +832,7 @@ function calculerSeuils(baseP) {
 }
 
 // Dessine les étiquettes de valeurs sur le graphique d'effort d'épargne
-function dessinerEtiquettesEffort(years, effortByYear) {
+function dessinerEtiquettesEffort(count, data, opts = {}) {
   const canvas = document.getElementById('chart-effort');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
@@ -841,29 +845,31 @@ function dessinerEtiquettesEffort(years, effortByYear) {
   const ch = h - pad.top - pad.bottom;
 
   let minVal = Infinity, maxVal = -Infinity;
-  for (const v of effortByYear) {
+  for (const v of data) {
     if (!isNaN(v)) { if (v < minVal) minVal = v; if (v > maxVal) maxVal = v; }
   }
+  if (minVal === Infinity) { minVal = 0; maxVal = 1000; }
   if (minVal === maxVal) { minVal -= 1000; maxVal += 1000; }
   const range = maxVal - minVal || 1;
   const padd = range * 0.1;
   minVal -= padd; maxVal += padd;
 
-  function x(i) { return pad.left + (i / years) * cw; }
+  function x(i) { return pad.left + (i / count) * cw; }
   function yVal(v) { return pad.top + ch - ((v - minVal) / (maxVal - minVal)) * ch; }
+
+  const labelStep = opts.labelStep != null ? opts.labelStep : Math.max(1, Math.floor(data.length / 8));
 
   ctx.save();
   ctx.font = 'bold 11px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
 
-  for (let i = 1; i <= years; i++) {
-    const val = effortByYear[i];
-    if (isNaN(val)) continue;
-    if (i === 1 || i === years || i % 5 === 0) {
+  for (let i = 0; i < data.length; i++) {
+    const val = data[i];
+    if (val === undefined || isNaN(val)) continue;
+    if (i === 0 || i === data.length - 1 || i % labelStep === 0) {
       const px = x(i), py = yVal(val);
-      const txt = formatShort(val);
-      // Contour foncé pour lisibilité sur fond clair
+      const txt = formatShort(Math.round(val));
       ctx.strokeStyle = 'rgba(15,17,23,0.8)';
       ctx.lineWidth = 3;
       ctx.lineJoin = 'round';
@@ -1108,15 +1114,55 @@ function simuler() {
     { label: 'Immo (net)', color: '#fdcb6e', data: immoYears.map(d => Math.round(d.netEquity)) },
   ]);
 
-  // 4. Effort d'épargne par année (hors apport initial)
-  const effortByYear = dcaYears.map((d, y) => {
-    const prev = y > 0 ? dcaYears[y-1].totalInvested : 0;
-    return y === 0 ? NaN : Math.round(d.totalInvested - prev);
+  // 4. Effort DCA mensuel (mois par mois)
+  const monthlyEfforts = simResult.monthlyEfforts || [];
+  const totalMonths = monthlyEfforts.length;
+  const MAX_POINTS = 216; // ~18 ans × 12 mois
+
+  let chartData, chartCount, xTickStep, xTickFormatter;
+
+  if (totalMonths <= MAX_POINTS) {
+    // Données mensuelles brutes
+    chartData = monthlyEfforts;
+    chartCount = totalMonths;
+    xTickStep = Math.min(12, Math.max(1, Math.floor(chartCount / 6)));
+    xTickFormatter = i => {
+      const yr = Math.floor(i / 12) + 1;
+      return yr <= 1 ? 'An 1' : `An ${yr}`;
+    };
+  } else {
+    // Moyenné par trimestre (3 mois)
+    const bucketSize = 3;
+    const aggregated = [];
+    for (let i = 0; i < totalMonths; i += bucketSize) {
+      let sum = 0, cnt = 0;
+      for (let j = 0; j < bucketSize && i + j < totalMonths; j++) {
+        sum += monthlyEfforts[i + j];
+        cnt++;
+      }
+      aggregated.push(Math.round(sum / cnt));
+    }
+    chartData = aggregated;
+    chartCount = aggregated.length;
+    xTickStep = Math.min(4, Math.max(1, Math.floor(chartCount / 6)));
+    xTickFormatter = i => {
+      const yr = Math.floor(i / 4) + 1;
+      return yr <= 1 ? 'An 1' : `An ${yr}`;
+    };
+  }
+
+  // Moyenne de l'effort mensuel sur toute la période
+  const avgMonthlyEffortVal = monthlyEfforts.reduce((a, b) => a + b, 0) / totalMonths;
+
+  drawLineChart('chart-effort', chartCount, [
+    { label: 'Effort DCA', color: '#ff6b6b', data: chartData, lineWidth: 2.5 },
+    { label: 'Moy.', color: '#ffd93d', data: [avgMonthlyEffortVal], horizontalLine: true, lineWidth: 2 },
+  ], {
+    xLabel: 'Années',
+    xTickStep: xTickStep,
+    xTickFormatter: xTickFormatter,
   });
-  drawLineChart('chart-effort', years, [
-    { label: 'Effort annuel', color: '#ff6b6b', data: effortByYear, lineWidth: 3 },
-  ]);
-  dessinerEtiquettesEffort(years, effortByYear);
+  dessinerEtiquettesEffort(chartCount, chartData, { labelStep: xTickStep });
   drawLineChart('chart-nopv', years, [
     { label: 'DCA valeur', color: '#00cec9', data: dcaYears.map(d => Math.round(d.value)) },
     { label: 'Immo (hors PV)', color: '#a29bfe', data: immoYears.map(d => Math.round(d.netEquityNoPV)) },
@@ -1133,7 +1179,7 @@ function simuler() {
 }
 
 // ====== CHART ======
-function drawLineChart(canvasId, years, series) {
+function drawLineChart(canvasId, count, series, opts = {}) {
   const canvas = document.getElementById(canvasId);
   const rect = canvas.parentElement.getBoundingClientRect();
   const w = Math.max(300, rect.width - 4);
@@ -1150,20 +1196,23 @@ function drawLineChart(canvasId, years, series) {
   const cw = w - pad.left - pad.right;
   const ch = h - pad.top - pad.bottom;
 
+  // Find min/max excluding horizontal-line series
   let minVal = Infinity, maxVal = -Infinity;
   for (const s of series) {
+    if (s.horizontalLine) continue;
     for (const v of s.data) {
-      if (v < minVal) minVal = v;
-      if (v > maxVal) maxVal = v;
+      if (!isNaN(v) && v < minVal) minVal = v;
+      if (!isNaN(v) && v > maxVal) maxVal = v;
     }
   }
+  if (minVal === Infinity) { minVal = 0; maxVal = 1000; }
   if (minVal === maxVal) { minVal -= 1000; maxVal += 1000; }
   const range = maxVal - minVal || 1;
   const padding = range * 0.1;
   minVal -= padding;
   maxVal += padding;
 
-  function x(i) { return pad.left + (i / years) * cw; }
+  function x(i) { return pad.left + (i / count) * cw; }
   function y(v) { return pad.top + ch - ((v - minVal) / (maxVal - minVal)) * ch; }
 
   ctx.clearRect(0, 0, w, h);
@@ -1187,34 +1236,83 @@ function drawLineChart(canvasId, years, series) {
     ctx.fillText(formatShort(val), pad.left - 6, pad.top + (i / nGrid) * ch);
   }
 
+  // X-axis labels
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  for (let i = 0; i <= years; i++) {
-    if (i % 5 === 0 || i === years) {
-      ctx.fillText(i, x(i), h - pad.bottom + 6);
+  if (opts.xTickStep != null) {
+    const fmt = opts.xTickFormatter || (i => String(i));
+    for (let i = 0; i <= count; i++) {
+      if (i % opts.xTickStep === 0 || i === count) {
+        ctx.fillText(fmt(i), x(i), h - pad.bottom + 6);
+      }
+    }
+  } else {
+    // Default: every 5 years (backward compat)
+    for (let i = 0; i <= count; i++) {
+      if (i % 5 === 0 || i === count) {
+        ctx.fillText(String(i), x(i), h - pad.bottom + 6);
+      }
     }
   }
 
   ctx.fillStyle = '#8b8fa3';
   ctx.font = '9px sans-serif';
-  ctx.fillText('Années', w / 2, h - 4);
+  ctx.fillText(opts.xLabel || 'Années', w / 2, h - 4);
 
+  // Draw series
   for (const s of series) {
+    if (s.horizontalLine) {
+      // Horizontal dashed line at the average of the data values
+      const mean = s.data.reduce((a, b) => a + b, 0) / s.data.length;
+      const yMean = y(mean);
+      ctx.save();
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = s.lineWidth || 1.5;
+      ctx.beginPath();
+      ctx.moveTo(pad.left, yMean);
+      ctx.lineTo(w - pad.right, yMean);
+      ctx.stroke();
+      ctx.restore();
+      // Label on the right side
+      ctx.save();
+      ctx.fillStyle = s.color;
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+      const txt = (s.label || 'Moy.') + ' ' + formatShort(Math.round(mean));
+      ctx.strokeStyle = 'rgba(15,17,23,0.8)';
+      ctx.lineWidth = 3;
+      ctx.lineJoin = 'round';
+      ctx.strokeText(txt, w - pad.right + 4, yMean - 2);
+      ctx.fillText(txt, w - pad.right + 4, yMean - 2);
+      ctx.restore();
+      continue;
+    }
+
+    // Regular line
     ctx.strokeStyle = s.color;
     ctx.lineWidth = s.lineWidth || 2.5;
     ctx.lineJoin = 'round';
     ctx.beginPath();
-    for (let i = 0; i <= years; i++) {
-      const px = x(i), py = y(s.data[i]);
-      if (i === 0) ctx.moveTo(px, py);
+    let started = false;
+    for (let i = 0; i <= count; i++) {
+      const v = s.data[i];
+      if (v === undefined || isNaN(v)) continue;
+      const px = x(i), py = y(v);
+      if (!started) { ctx.moveTo(px, py); started = true; }
       else ctx.lineTo(px, py);
     }
     ctx.stroke();
 
-    for (let i = 0; i <= years; i++) {
-      if (i % 5 === 0 || i === years) {
+    // Dots at visible intervals
+    const dotStep = opts.xTickStep != null ? opts.xTickStep : 5;
+    for (let i = 0; i <= count; i++) {
+      const v = s.data[i];
+      if (v === undefined || isNaN(v)) continue;
+      if (i % dotStep === 0 || i === count) {
         ctx.beginPath();
-        ctx.arc(x(i), y(s.data[i]), 3, 0, Math.PI * 2);
+        ctx.arc(x(i), y(v), 3, 0, Math.PI * 2);
         ctx.fillStyle = s.color;
         ctx.fill();
         ctx.strokeStyle = '#0f1117';
