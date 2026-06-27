@@ -2,7 +2,7 @@
 
 Comparateur interactif : **investissement financier en DCA** versus **investissement locatif immobilier**.
 
-[➡️ Ouvrir l'outil](https://github.com/loukas-pro/dca-vs-immo/blob/main/index.html) *(téléchargez puis ouvrez dans votre navigateur)*
+[➡️ Ouvrir l'outil](https://allardlucas.github.io/dca-vs-immo/) *(aucune installation requise)*
 
 ## 🔍 Principe
 
