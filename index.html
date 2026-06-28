@@ -640,7 +640,7 @@ function runSimulation(p) {
     price, notaire, loanRate, loanYears,
     rent, rentGrowth, priceGrowth,
     taxeFonciere, charges, travaux, vacance, gestionPct,
-    rentTaxRegime, rentTaxRate,
+    rentTaxRegime, rentTaxRate, rentTaxTMI,
   } = p;
 
   // LMNP amort
@@ -675,6 +675,10 @@ function runSimulation(p) {
   let totalExpenses = 0;
   let totalRentTaxPaid = 0;
   let cumulAmortization = 0;
+  // French tax carryforwards tracked inside the yearly simulation loop.
+  let cumulDeficitFoncier = 0;  // déficit foncier reportable 10 ans, consumé en FIFO
+  let cumulDeficitBIC = 0;      // déficit LMNP/BIC reportable sans limite de durée
+  let deficitFoncierQueue = []; // FIFO queue of {amount, year} for the 10-year foncier window
 
   for (let y = 0; y <= years; y++) {
     let annualInterest = 0;
@@ -685,6 +689,14 @@ function runSimulation(p) {
     if (y > 0) {
       currentRent *= (1 + rentGrowth);
       currentPrice *= (1 + priceGrowth);
+
+      // Expire old déficit foncier entries before monthly estimates and tax use.
+      deficitFoncierQueue = deficitFoncierQueue.filter(d => {
+        if (y - d.year <= 10) return true;
+        cumulDeficitFoncier -= d.amount;
+        return false;
+      });
+      cumulDeficitFoncier = Math.max(0, cumulDeficitFoncier);
 
       for (let m = 0; m < 12; m++) {
         let monthlyLoanPaid = 0;
@@ -716,6 +728,19 @@ function runSimulation(p) {
         const monthlyTaxEstimate = (() => {
           if (rentTaxRegime === 'micro-foncier') return monthlyRent * 0.70 * rentTaxRate;
           if (rentTaxRegime === 'micro-bic')    return monthlyRent * 0.50 * rentTaxRate;
+          // Approximation: annual French declarations are smoothed into a monthly impact.
+          // We reduce the estimate when already carried deficits can offset future rent profit.
+          const monthlyRentRoughResult = monthlyRent - monthExpenses;
+          if (rentTaxRegime === 'reel-foncier' && cumulDeficitFoncier > 0 && monthlyRentRoughResult > 0) {
+            const yearlyRoughResult = monthlyRentRoughResult * 12;
+            const deficitDeduction = Math.min(cumulDeficitFoncier, yearlyRoughResult);
+            return Math.max(0, (yearlyRoughResult - deficitDeduction) / 12) * rentTaxRate;
+          }
+          if (rentTaxRegime === 'reel-bic' && cumulDeficitBIC > 0 && monthlyRentRoughResult > 0) {
+            const yearlyRoughResult = monthlyRentRoughResult * 12;
+            const deficitDeduction = Math.min(cumulDeficitBIC, yearlyRoughResult);
+            return Math.max(0, (yearlyRoughResult - deficitDeduction) / 12) * rentTaxRate;
+          }
           return Math.max(0, monthlyRent - monthExpenses) * rentTaxRate;
         })();
 
@@ -730,16 +755,55 @@ function runSimulation(p) {
       const annualAmort = (y <= LMNP_BUILDING_YEARS ? buildingAmortAnnual : 0) + (y <= LMNP_FURNITURE_YEARS ? furnitureAmortAnnual : 0);
       cumulAmortization += annualAmort;
 
+      // France: déficit foncier can offset global income up to 10,700 €/year;
+      // the remainder is carried forward against future rent income for 10 years.
       if (rentTaxRegime === 'micro-foncier') {
         annualRentTax = Math.max(0, annualRentRevenue * 0.70 * rentTaxRate);
       } else if (rentTaxRegime === 'micro-bic') {
         annualRentTax = Math.max(0, annualRentRevenue * 0.50 * rentTaxRate);
       } else if (rentTaxRegime === 'reel-bic') {
-        const taxableBIC = Math.max(0, annualRentRevenue - annualExpenses - annualInterest - annualAmort);
-        annualRentTax = taxableBIC * rentTaxRate;
+        // LMNP / BIC deficits are reportable indefinitely and consume future profits first.
+        let resultatBIC = annualRentRevenue - annualExpenses - annualInterest - annualAmort;
+        if (resultatBIC < 0) {
+          cumulDeficitBIC += -resultatBIC;
+          annualRentTax = 0;
+        } else {
+          let taxable = resultatBIC;
+          const deficitUsed = Math.min(cumulDeficitBIC, taxable);
+          cumulDeficitBIC -= deficitUsed;
+          taxable -= deficitUsed;
+          annualRentTax = taxable * rentTaxRate;
+        }
       } else {
-        const taxableRent = Math.max(0, annualRentRevenue - annualExpenses - annualInterest);
-        annualRentTax = taxableRent * rentTaxRate;
+        // Déficit foncier: match the oldest remaining carryforward first (FIFO).
+        let resultatFoncier = annualRentRevenue - annualExpenses - annualInterest;
+        if (resultatFoncier < 0) {
+          const deficit = -resultatFoncier;
+          const deductibleFromGlobal = Math.min(deficit, 10700);
+          // Imputation sur le revenu global à la TMI uniquement (pas de PS sur cette fraction).
+          // Art. 156 I-3° CGI : la part ≤ 10 700 € du déficit foncier est déductible
+          // du revenu global à la TMI, sans prélèvements sociaux.
+          annualRentTax = -deductibleFromGlobal * (rentTaxTMI || (rentTaxRate - PS_LOYERS));
+          const reportableDeficit = deficit - deductibleFromGlobal;
+          if (reportableDeficit > 0) {
+            cumulDeficitFoncier += reportableDeficit;
+            deficitFoncierQueue.push({ amount: reportableDeficit, year: y });
+          }
+        } else {
+          let taxable = resultatFoncier;
+          // Deduct accumulated deficits (FIFO, 10-year limit).
+          let deficitUsed = 0;
+          for (let d of deficitFoncierQueue) {
+            if (taxable <= 0) break;
+            const used = Math.min(d.amount, taxable);
+            d.amount -= used;
+            taxable -= used;
+            deficitUsed += used;
+          }
+          cumulDeficitFoncier = Math.max(0, cumulDeficitFoncier - deficitUsed);
+          deficitFoncierQueue = deficitFoncierQueue.filter(d => d.amount > 0);
+          annualRentTax = Math.max(0, taxable) * rentTaxRate;
+        }
       }
       totalRentTaxPaid += annualRentTax;
     }
@@ -969,7 +1033,7 @@ function simuler() {
     price, notaire, loanRate, loanYears,
     rent, rentGrowth, priceGrowth,
     taxeFonciere, charges, travaux, vacance, gestionPct,
-    rentTaxRegime, rentTaxRate,
+    rentTaxRegime, rentTaxRate, rentTaxTMI: rentTaxTMI,
   });
 
   const {
@@ -1204,7 +1268,7 @@ function simuler() {
     price, notaire, loanRate, loanYears,
     rent, rentGrowth, priceGrowth,
     taxeFonciere, charges, travaux, vacance, gestionPct,
-    rentTaxRegime, rentTaxRate,
+    rentTaxRegime, rentTaxRate, rentTaxTMI: rentTaxTMI,
   });
 }
 
