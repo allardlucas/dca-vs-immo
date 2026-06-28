@@ -640,7 +640,7 @@ function runSimulation(p) {
     price, notaire, loanRate, loanYears,
     rent, rentGrowth, priceGrowth,
     taxeFonciere, charges, travaux, vacance, gestionPct,
-    rentTaxRegime, rentTaxRate,
+    rentTaxRegime, rentTaxRate, rentTaxTMI,
   } = p;
 
   // LMNP amort
@@ -780,8 +780,10 @@ function runSimulation(p) {
         if (resultatFoncier < 0) {
           const deficit = -resultatFoncier;
           const deductibleFromGlobal = Math.min(deficit, 10700);
-          // Approximation: tax saving from global income deduction at TMI+PS rate.
-          annualRentTax = -deductibleFromGlobal * rentTaxRate;
+          // Imputation sur le revenu global à la TMI uniquement (pas de PS sur cette fraction).
+          // Art. 156 I-3° CGI : la part ≤ 10 700 € du déficit foncier est déductible
+          // du revenu global à la TMI, sans prélèvements sociaux.
+          annualRentTax = -deductibleFromGlobal * (rentTaxTMI || (rentTaxRate - PS_LOYERS));
           const reportableDeficit = deficit - deductibleFromGlobal;
           if (reportableDeficit > 0) {
             cumulDeficitFoncier += reportableDeficit;
@@ -1031,7 +1033,7 @@ function simuler() {
     price, notaire, loanRate, loanYears,
     rent, rentGrowth, priceGrowth,
     taxeFonciere, charges, travaux, vacance, gestionPct,
-    rentTaxRegime, rentTaxRate,
+    rentTaxRegime, rentTaxRate, rentTaxTMI: rentTaxTMI,
   });
 
   const {
@@ -1266,7 +1268,7 @@ function simuler() {
     price, notaire, loanRate, loanYears,
     rent, rentGrowth, priceGrowth,
     taxeFonciere, charges, travaux, vacance, gestionPct,
-    rentTaxRegime, rentTaxRate,
+    rentTaxRegime, rentTaxRate, rentTaxTMI: rentTaxTMI,
   });
 }
 
