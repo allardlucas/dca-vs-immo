@@ -632,6 +632,31 @@ const LMNP_BUILDING_PCT = 0.80;
 const LMNP_FURNITURE_YEARS = 7;
 const LMNP_FURNITURE_PCT = 0.10;
 
+// Barème dual IR/PS pour l'abattement sur plus-value immobilière (art. 150 VC CGI)
+// holdingYears = années révolues (Math.floor)
+function computeAbatementIR(holdingYears) {
+  const y = Math.floor(holdingYears);
+  if (y < 6) return 0;
+  if (y >= 22) return 1.0;   // exonération totale IR à partir de la 22e année révolue
+  const yearsAfter5 = y - 5;
+  // 6%/an de la 6e à la 21e année (max 16 ans × 6% = 96% à 21 ans)
+  return Math.min(yearsAfter5 * 0.06, 0.96);
+}
+
+function computeAbatementPS(holdingYears) {
+  const y = Math.floor(holdingYears);
+  if (y < 6) return 0;
+  if (y >= 30) return 1.0;  // exonération totale PS à partir de la 30e année révolue
+  let abatement = 0;
+  // 6e à 21e année : 1,65%/an → max 16 ans
+  if (y > 5) abatement += Math.min(y - 5, 16) * 0.0165;
+  // 22e année : 1,6% (pas 1,65% !)
+  if (y >= 22) abatement += 0.016;
+  // 23e à 30e année : 9%/an (max 7 ans pour y=29, car y=30 déjà exonéré)
+  if (y > 22) abatement += Math.min(y - 22, 7) * 0.09;
+  return Math.min(abatement, 1.0);
+}
+
 window._chartRenderState = window._chartRenderState || {};
 
 function annualizedReturn(final, totalPaid, y) {
@@ -821,10 +846,12 @@ function runSimulation(p) {
     const saleFees = salePrice * 0.06;
     const acquisitionCostFiscal = acquisitionCost - cumulAmortization;
     const capitalGain = salePrice - acquisitionCostFiscal;
-    const cgYearsTmp = Math.max(0, y - 5);
-    const abatement = Math.min(cgYearsTmp * 0.06, 0.60);
-    const taxableGain = Math.max(0, capitalGain * (1 - abatement));
-    const cgTax = taxableGain * (0.19 + PS_FONCIER);
+    // Barème dual IR/PS (art. 150 VC CGI)
+    const irAbatement = computeAbatementIR(y);
+    const psAbatement = computeAbatementPS(y);
+    const irTaxable = Math.max(0, capitalGain * (1 - irAbatement));
+    const psTaxable = Math.max(0, capitalGain * (1 - psAbatement));
+    const cgTax = irTaxable * 0.19 + psTaxable * PS_FONCIER;
 
     const netEquity = salePrice - remainingDebt - saleFees - cgTax + netRentalIncome;
     const netEquityBrut = salePrice - remainingDebt - saleFees + netRentalIncome;
