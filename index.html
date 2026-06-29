@@ -624,7 +624,9 @@
 <script>
 // ====== FONCTIONS DE SIMULATION ======
 
-const PS_LOYERS = 0.186;
+const PS_FONCIER  = 0.172;   // Revenus fonciers + PV immobilière (CSG 9,2% + CRDS 0,5% + PS 7,5% + CA 0,3%)
+const PS_MOBILIER = 0.186;   // Revenus financiers PEA/CTO (CSG 9,2% + CRDS 0,5% + PS 7,5% + contrib 0,3% + solidarité 1,1%)
+const IR_PFU      = 0.128;   // IR flat tax (12,8%)
 const LMNP_BUILDING_YEARS = 25;
 const LMNP_BUILDING_PCT = 0.80;
 const LMNP_FURNITURE_YEARS = 7;
@@ -788,7 +790,7 @@ function runSimulation(p) {
           // Imputation sur le revenu global à la TMI uniquement (pas de PS sur cette fraction).
           // Art. 156 I-3° CGI : la part ≤ 10 700 € du déficit foncier est déductible
           // du revenu global à la TMI, sans prélèvements sociaux.
-          annualRentTax = -deductibleFromGlobal * (rentTaxTMI || (rentTaxRate - PS_LOYERS));
+          annualRentTax = -deductibleFromGlobal * (rentTaxTMI || (rentTaxRate - PS_FONCIER));
           const reportableDeficit = deficit - deductibleFromGlobal;
           if (reportableDeficit > 0) {
             cumulDeficitFoncier += reportableDeficit;
@@ -822,7 +824,7 @@ function runSimulation(p) {
     const cgYearsTmp = Math.max(0, y - 5);
     const abatement = Math.min(cgYearsTmp * 0.06, 0.60);
     const taxableGain = Math.max(0, capitalGain * (1 - abatement));
-    const cgTax = taxableGain * (0.19 + 0.172);
+    const cgTax = taxableGain * (0.19 + PS_FONCIER);
 
     const netEquity = salePrice - remainingDebt - saleFees - cgTax + netRentalIncome;
     const netEquityBrut = salePrice - remainingDebt - saleFees + netRentalIncome;
@@ -988,12 +990,12 @@ function simuler() {
   const dcaFlatTax    = dcaTaxBtn.dataset.value !== 'tmi' ? parseFloat(dcaTaxBtn.dataset.value) : null;
   const dcaTmiBtn     = document.querySelector('#dca-tmi-toggle .active');
   const dcaTmiRate    = dcaTmiBtn ? parseFloat(dcaTmiBtn.dataset.value) : 0.30;
-  const dcaTaxRate    = dcaFlatTax !== null ? dcaFlatTax : dcaTmiRate + PS_LOYERS;
+  const dcaTaxRate    = dcaFlatTax !== null ? dcaFlatTax : dcaTmiRate + PS_MOBILIER;
 
   // TMI dédié aux loyers immo + PS (sélectionnable indépendamment)
   const immoTmiBtn = document.querySelector('#immo-tmi-toggle .active');
   const rentTaxTMI = immoTmiBtn ? parseFloat(immoTmiBtn.dataset.value) : 0.30;
-  const rentTaxRate = rentTaxTMI + PS_LOYERS;
+  const rentTaxRate = rentTaxTMI + PS_FONCIER;
 
   const price       = +document.getElementById('immo-price').value;
   let down          = +document.getElementById('immo-down').value;
@@ -1161,7 +1163,7 @@ function simuler() {
   // Info fiscalité loyers
   const tmiPct = (rentTaxTMI * 100).toFixed(0);
   const taxPct = (rentTaxRate * 100).toFixed(1);
-  const psPctLabel = (PS_LOYERS * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 });
+  const psPctLabel = (PS_FONCIER * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 });
   const regimeLabels = {
     'micro-foncier': `Nu · Abattement 30% sur les loyers, puis TMI ${tmiPct}% + PS ${psPctLabel}% = ${taxPct}%`,
     'reel-foncier': `Nu · Charges réelles + intérêts déductibles, puis TMI ${tmiPct}% + PS ${psPctLabel}% = ${taxPct}%`,
@@ -1697,11 +1699,11 @@ document.querySelectorAll('#dca-tax-toggle button').forEach(btn => {
       tmiGroup.style.display = 'block';
       const tmiBtn = document.querySelector('#dca-tmi-toggle .active');
       const tmi = tmiBtn ? parseFloat(tmiBtn.dataset.value) * 100 : 30;
-      taxLabel.textContent = `TMI ${tmi}% + PS ${(PS_LOYERS * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })}%`;
+      taxLabel.textContent = `TMI ${tmi}% + PS ${(PS_MOBILIER * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })}%`;
     } else {
       tmiGroup.style.display = 'none';
       const pct = parseFloat(btn.dataset.value) * 100;
-      taxLabel.textContent = btn.dataset.value === String(PS_LOYERS) ? `PEA (PS ${pct}%)` : `Flat tax ${pct}%`;
+      taxLabel.textContent = btn.dataset.value === String(PS_MOBILIER) ? `PEA (PS ${pct}%)` : `Flat tax ${pct}%`;
     }
     simuler();
   });
@@ -1716,7 +1718,7 @@ document.querySelectorAll('#dca-tmi-toggle button').forEach(btn => {
     document.getElementById('dca-tmi-val').textContent = `${tmiPct} %`;
     const activeToggle = document.querySelector('#dca-tax-toggle .active');
     if (activeToggle && activeToggle.dataset.value === 'tmi') {
-      document.getElementById('dca-tax-val').textContent = `TMI ${tmiPct}% + PS ${(PS_LOYERS * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })}%`;
+      document.getElementById('dca-tax-val').textContent = `TMI ${tmiPct}% + PS ${(PS_MOBILIER * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })}%`;
     }
     simuler();
   });
