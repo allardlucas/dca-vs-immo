@@ -732,6 +732,7 @@ function runSimulation(p) {
   let cumulDeficitFoncier = 0;  // déficit foncier reportable 10 ans, consumé en FIFO
   let cumulDeficitBIC = 0;      // déficit LMNP/BIC reportable sans limite de durée
   let deficitFoncierQueue = []; // FIFO queue of {amount, year} for the 10-year foncier window
+  let lastYearAnnualRentTax = 0; // taxe annuelle de l'année précédente, lissée en mensuel
 
   for (let y = 0; y <= years; y++) {
     let annualInterest = 0;
@@ -782,9 +783,21 @@ function runSimulation(p) {
         const monthlyTaxEstimate = (() => {
           if (rentTaxRegime === 'micro-foncier') return monthlyRent * 0.70 * rentTaxRate;
           if (rentTaxRegime === 'micro-bic')    return monthlyRent * 0.50 * rentTaxRate;
-          // Approximation: annual French declarations are smoothed into a monthly impact.
-          // We reduce the estimate when already carried deficits can offset future rent profit.
-          const monthlyRentRoughResult = monthlyRent - monthExpenses;
+
+          // Régimes réels : utiliser la taxe annuelle de l'an dernier comme référence
+          // Année 1 : estimation avec amortissement (connu) + approximation intérêts
+          const monthlyAmortEstimate = (buildingAmortAnnual + furnitureAmortAnnual) / 12;
+
+          if (lastYearAnnualRentTax > 0) {
+            // Années 2+ : taxe réelle de l'an dernier / 12
+            return lastYearAnnualRentTax / 12;
+          }
+
+          // Année 1 : estimation conservative (loyers - charges - amort mensuel) × taux
+          // Note : les intérêts sont ignorés en année 1 par prudence (l'estimation sera
+          // corrigée dès l'année 2 avec la vraie taxe annuelle)
+          const monthlyRentRoughResult = monthlyRent - monthExpenses - monthlyAmortEstimate;
+
           if (rentTaxRegime === 'reel-foncier' && cumulDeficitFoncier > 0 && monthlyRentRoughResult > 0) {
             const yearlyRoughResult = monthlyRentRoughResult * 12;
             const deficitDeduction = Math.min(cumulDeficitFoncier, yearlyRoughResult);
@@ -795,7 +808,7 @@ function runSimulation(p) {
             const deficitDeduction = Math.min(cumulDeficitBIC, yearlyRoughResult);
             return Math.max(0, (yearlyRoughResult - deficitDeduction) / 12) * rentTaxRate;
           }
-          return Math.max(0, monthlyRent - monthExpenses) * rentTaxRate;
+          return Math.max(0, monthlyRentRoughResult) * rentTaxRate;
         })();
 
         const monthlyCF = monthlyRent - monthlyLoanPaid - monthExpenses - monthlyTaxEstimate;
@@ -883,6 +896,7 @@ function runSimulation(p) {
         }
       }
       totalRentTaxPaid += annualRentTax;
+      lastYearAnnualRentTax = annualRentTax;
     }
 
     const remainingDebt = Math.max(0, remainingLoan);
