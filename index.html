@@ -453,6 +453,10 @@
         <label>Frais de gestion <span id="immo-gestion-val">5 %</span></label>
         <input type="range" id="immo-gestion" min="0" max="15" value="5" step="1">
       </div>
+      <div class="param">
+        <label>CFE (meublé) <span id="immo-cfe-val">400 €</span></label>
+        <input type="range" id="immo-cfe" min="0" max="5000" value="400" step="100">
+      </div>
     </div>
 
     <!-- Récapitulatif rapide -->
@@ -536,7 +540,7 @@
         <div class="value" id="res-immo-return">—</div>
       </div>
       <div class="result-card">
-        <div class="label">Cash-flow mensuel (Immo)<span class="tip">?<span class="tip-text"><b>Cash-flow net d'impôt, dernière année.</b><br>= Loyers encaissés (− vacance)<br>− mensualité de crédit (0 si crédit remboursé)<br>− frais de gestion<br>− taxe foncière, charges, travaux, assurance<br>− impôt foncier (TMI + PS 18,6%).<br>S'il est négatif, c'est l'effort d'épargne mensuel à fournir.</span></span></div>
+        <div class="label">Cash-flow mensuel (Immo)<span class="tip">?<span class="tip-text"><b>Cash-flow net d'impôt, dernière année.</b><br>= Loyers encaissés (− vacance)<br>− mensualité de crédit (0 si crédit remboursé)<br>− frais de gestion<br>− taxe foncière, charges, travaux, assurance, CFE (meublé)<br>− impôt foncier (TMI + PS 18,6%).<br>S'il est négatif, c'est l'effort d'épargne mensuel à fournir.</span></span></div>
         <div class="value" id="res-cashflow">—</div>
         <div class="sub" id="res-cashflow-detail">fin de période</div>
       </div>
@@ -639,7 +643,7 @@ function runSimulation(p) {
     dcaInitial, growth, years, dcaTaxRate,
     price, notaire, loanRate, loanYears,
     rent, rentGrowth, priceGrowth,
-    taxeFonciere, charges, travaux, vacance, gestionPct,
+    taxeFonciere, charges, travaux, vacance, gestionPct, cfe,
     rentTaxRegime, rentTaxRate, rentTaxTMI,
   } = p;
 
@@ -721,7 +725,8 @@ function runSimulation(p) {
         const monthlyTravaux = currentPrice * travaux / 12;
         const monthlyAssurance = 300 / 12;
         const monthlyGestion = monthlyRent * gestionPct;
-        const monthExpenses = monthlyTaxe + monthlyCharges + monthlyTravaux + monthlyAssurance + monthlyGestion;
+        const monthlyCFE = isLMNP ? cfe / 12 : 0;
+        const monthExpenses = monthlyTaxe + monthlyCharges + monthlyTravaux + monthlyAssurance + monthlyGestion + monthlyCFE;
         totalExpenses += monthExpenses;
         annualExpenses += monthExpenses;
 
@@ -1013,6 +1018,7 @@ function simuler() {
   const travaux     = +document.getElementById('immo-travaux').value / 100;
   const vacance     = +document.getElementById('immo-vacance').value / 100;
   const gestionPct  = +document.getElementById('immo-gestion').value / 100;
+  const cfe        = +document.getElementById('immo-cfe').value;
   const rentTaxRegime = document.querySelector('#rent-tax-toggle .active').dataset.value;
 
   // Coûts mensuels (hors crédit) — ne dépendent pas de l'apport
@@ -1032,7 +1038,7 @@ function simuler() {
     dcaInitial, growth, years, dcaTaxRate,
     price, notaire, loanRate, loanYears,
     rent, rentGrowth, priceGrowth,
-    taxeFonciere, charges, travaux, vacance, gestionPct,
+    taxeFonciere, charges, travaux, vacance, gestionPct, cfe,
     rentTaxRegime, rentTaxRate, rentTaxTMI: rentTaxTMI,
   });
 
@@ -1063,12 +1069,13 @@ function simuler() {
   const currentRent = rent * Math.pow(1 + rentGrowth, years);
   const currentPrice = price * Math.pow(1 + priceGrowth, years);
   const lastRentNet = currentRent * (1 - vacance);
+  const lastIsLMNP = rentTaxRegime === 'micro-bic' || rentTaxRegime === 'reel-bic';
   const lastEffGestion = lastRentNet * gestionPct;
-  const lastEffCharges = (taxeFonciere + charges * 12 + currentPrice * travaux + 300) / 12;
+  const lastEffCharges = (taxeFonciere + charges * 12 + currentPrice * travaux + 300 + (lastIsLMNP ? cfe : 0)) / 12;
 
   // Impôt mensuel de la dernière année (selon régime)
   const lastAnnualRent = lastRentNet * 12;
-  const lastAnnualCharges = (taxeFonciere + charges * 12 + currentPrice * travaux + 300) + lastEffGestion * 12;
+  const lastAnnualCharges = (taxeFonciere + charges * 12 + currentPrice * travaux + 300 + (lastIsLMNP ? cfe : 0)) + lastEffGestion * 12;
   let lastMonthlyTax;
   const lastInterest = years <= loanYears && remainingLoan > 0 ? remainingLoan * monthlyRate * 12 : 0;
   if (rentTaxRegime === 'micro-foncier') {
@@ -1158,8 +1165,8 @@ function simuler() {
   const regimeLabels = {
     'micro-foncier': `Nu · Abattement 30% sur les loyers, puis TMI ${tmiPct}% + PS ${psPctLabel}% = ${taxPct}%`,
     'reel-foncier': `Nu · Charges réelles + intérêts déductibles, puis TMI ${tmiPct}% + PS ${psPctLabel}% = ${taxPct}%`,
-    'micro-bic':    `LMNP · Abattement 50% sur recettes, puis TMI ${tmiPct}% + PS ${psPctLabel}% = ${taxPct}%`,
-    'reel-bic':     `LMNP · Charges + amort. bât. ${(LMNP_BUILDING_PCT * 100).toFixed(0)}%/${LMNP_BUILDING_YEARS} ans + mob. ${(LMNP_FURNITURE_PCT * 100).toFixed(0)}%/${LMNP_FURNITURE_YEARS} ans, puis TMI ${tmiPct}% + PS ${psPctLabel}% = ${taxPct}%`,
+    'micro-bic':    `LMNP · Abattement 50% sur recettes + CFE non déduct., puis TMI ${tmiPct}% + PS ${psPctLabel}% = ${taxPct}%`,
+    'reel-bic':     `LMNP · Charges + amort. bât. ${(LMNP_BUILDING_PCT * 100).toFixed(0)}%/${LMNP_BUILDING_YEARS} ans + mob. ${(LMNP_FURNITURE_PCT * 100).toFixed(0)}%/${LMNP_FURNITURE_YEARS} ans + CFE, puis TMI ${tmiPct}% + PS ${psPctLabel}% = ${taxPct}%`,
   };
   document.getElementById('rent-tax-desc').textContent = regimeLabels[rentTaxRegime] || regimeLabels['micro-foncier'];
 
@@ -1267,7 +1274,7 @@ function simuler() {
     dcaInitial, growth, years, dcaTaxRate,
     price, notaire, loanRate, loanYears,
     rent, rentGrowth, priceGrowth,
-    taxeFonciere, charges, travaux, vacance, gestionPct,
+    taxeFonciere, charges, travaux, vacance, gestionPct, cfe,
     rentTaxRegime, rentTaxRate, rentTaxTMI: rentTaxTMI,
   });
 }
@@ -1660,6 +1667,7 @@ const sliders = [
   { id: 'immo-travaux', suffix: ' %', fmt: v => (+v).toFixed(2) },
   { id: 'immo-vacance', suffix: ' %' },
   { id: 'immo-gestion', suffix: ' %' },
+  { id: 'immo-cfe', suffix: ' €', fmt: v => (+v).toLocaleString('fr-FR') },
   { id: 'immo-yield', suffix: ' %', fmt: v => (+v).toFixed(1) },
 ];
 
