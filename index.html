@@ -867,7 +867,7 @@ function runSimulation(p) {
     const netRentalIncome = totalRentReceived - totalExpenses - totalRentTaxPaid;
     const salePrice = currentPrice;
     const saleFees = salePrice * 0.06;
-    const acquisitionCostFiscal = acquisitionCost - cumulAmortization;
+    const acquisitionCostFiscal = acquisitionCost - (isLMNP ? 0 : cumulAmortization);
     const capitalGain = salePrice - acquisitionCostFiscal;
     // Barème dual IR/PS (art. 150 VC CGI)
     const irAbatement = computeAbatementIR(y);
