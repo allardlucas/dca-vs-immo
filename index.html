@@ -510,7 +510,7 @@
         <div class="sub" id="res-dca-net">après impôt</div>
       </div>
       <div class="result-card immo">
-        <div class="label">Patrimoine net final (Immo)<span class="tip">?<span class="tip-text"><b>Immo = valeur de revente − tout ce qu'il reste à payer/déduire.</b><br>= Prix de revente du bien<br>− Capital restant dû sur le crédit<br>− Frais d'agence revente (6%)<br>− Impôt sur la plus-value immo (abattement 6%/an après 5 ans)<br>+ Cumul des loyers nets (loyers − charges − impôt foncier) sur toute la période.</span></span></div>
+        <div class="label">Patrimoine net final (Immo)<span class="tip">?<span class="tip-text"><b>Immo = valeur de revente − tout ce qu'il reste à payer/déduire.</b><br>= Prix de revente du bien<br>− Capital restant dû sur le crédit<br>− Frais d'agence revente (6%)<br>− Impôt sur la plus-value immo (base = prix d'acquisition réel + notaire, abattement 6%/an après 5 ans, max 60%)<br>+ Cumul des loyers nets (loyers − charges − impôt foncier) sur toute la période.</span></span></div>
         <div class="value" id="res-immo-final">—</div>
         <div class="sub" id="res-immo-net">après revente et impôt</div>
       </div>
@@ -679,6 +679,8 @@ function runSimulation(p) {
   const buildingAmortAnnual = isLMNP ? LMNP_BUILDING_PCT * price / LMNP_BUILDING_YEARS : 0;
   const furnitureAmortAnnual = isLMNP ? LMNP_FURNITURE_PCT * price / LMNP_FURNITURE_YEARS : 0;
 
+  // Coût d'acquisition fiscal = prix + frais de notaire (art. 150 U CGI).
+  // En LMNP, l'amortissement comptable ne réduit pas cette base de PV.
   const acquisitionCost = price * (1 + notaire);
   const down = dcaInitial;
   const notaireRecalc = price * notaire;
