@@ -540,7 +540,7 @@
         <div class="value" id="res-immo-return">—</div>
       </div>
       <div class="result-card">
-        <div class="label">Cash-flow mensuel (Immo)<span class="tip">?<span class="tip-text"><b>Cash-flow net d'impôt, dernière année.</b><br>= Loyers encaissés (− vacance)<br>− mensualité de crédit (0 si crédit remboursé)<br>− frais de gestion<br>− taxe foncière, charges, travaux, assurance, CFE (meublé)<br>− impôt foncier (TMI + PS 18,6%).<br>S'il est négatif, c'est l'effort d'épargne mensuel à fournir.</span></span></div>
+        <div class="label">Cash-flow mensuel (Immo)<span class="tip">?<span class="tip-text"><b>Cash-flow net d'impôt, dernière année.</b><br>= Loyers encaissés (− vacance)<br>− mensualité de crédit (0 si crédit remboursé)<br>− frais de gestion<br>− taxe foncière, charges, travaux, assurance, CFE (meublé)<br>− impôt foncier (TMI + PS 17,2%).<br>S'il est négatif, c'est l'effort d'épargne mensuel à fournir.</span></span></div>
         <div class="value" id="res-cashflow">—</div>
         <div class="sub" id="res-cashflow-detail">fin de période</div>
       </div>
@@ -1171,7 +1171,9 @@ function simuler() {
   } else if (rentTaxRegime === 'micro-bic') {
     lastMonthlyTax = (lastAnnualRent * 0.50 * rentTaxRate) / 12;
   } else if (rentTaxRegime === 'reel-bic') {
-    const lastAnnualAmort = LMNP_BUILDING_PCT * price / LMNP_BUILDING_YEARS + LMNP_FURNITURE_PCT * price / LMNP_FURNITURE_YEARS;
+    const bAmort = years <= LMNP_BUILDING_YEARS ? LMNP_BUILDING_PCT * price / LMNP_BUILDING_YEARS : 0;
+    const fAmort = years <= LMNP_FURNITURE_YEARS ? LMNP_FURNITURE_PCT * price / LMNP_FURNITURE_YEARS : 0;
+    const lastAnnualAmort = bAmort + fAmort;
     lastMonthlyTax = (Math.max(0, lastAnnualRent - lastAnnualCharges - lastInterest - lastAnnualAmort) * rentTaxRate) / 12;
   } else { // réel foncier
     lastMonthlyTax = (Math.max(0, lastAnnualRent - lastAnnualCharges - lastInterest) * rentTaxRate) / 12;
