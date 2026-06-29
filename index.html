@@ -807,23 +807,46 @@ function runSimulation(p) {
           annualRentTax = taxable * rentTaxRate;
         }
       } else {
-        // Déficit foncier: match the oldest remaining carryforward first (FIFO).
+        // Déficit foncier : distinction intérêts / travaux (LF 2019, art. 156 I-3° CGI)
+        // Masse A : déficit hors intérêts (travaux, charges, taxe foncière...)
+        // Masse B : déficit financier (intérêts d'emprunt)
+
         let resultatFoncier = annualRentRevenue - annualExpenses - annualInterest;
+
         if (resultatFoncier < 0) {
-          const deficit = -resultatFoncier;
-          const deductibleFromGlobal = Math.min(deficit, 10700);
-          // Imputation sur le revenu global à la TMI uniquement (pas de PS sur cette fraction).
-          // Art. 156 I-3° CGI : la part ≤ 10 700 € du déficit foncier est déductible
-          // du revenu global à la TMI, sans prélèvements sociaux.
+          // Masse A : résultat avant intérêts (déficit travaux)
+          const resultatTravaux = annualRentRevenue - annualExpenses;
+
+          let deficitTravaux = 0;
+          let deficitInterets = 0;
+
+          if (resultatTravaux < 0) {
+            // Les charges (hors intérêts) dépassent déjà les loyers
+            deficitTravaux = -resultatTravaux;
+            // Les intérêts creusent encore le déficit → report RF uniquement
+            deficitInterets = annualInterest;
+          } else {
+            // Les charges sont couvertes, mais les intérêts font basculer en déficit
+            // resultatTravaux >= 0, resultatFoncier < 0
+            deficitInterets = -resultatFoncier;
+          }
+
+          // Imputation sur le revenu global : SEUL le déficit travaux, plafond 10 700
+          const deductibleFromGlobal = Math.min(deficitTravaux, 10700);
+
+          // Gain fiscal : imputation à la TMI seule (pas de PS)
           annualRentTax = -deductibleFromGlobal * (rentTaxTMI || (rentTaxRate - PS_FONCIER));
-          const reportableDeficit = deficit - deductibleFromGlobal;
+
+          // Report RF : surplus travaux (> 10 700) + TOUS les intérêts
+          const reportableDeficit = (deficitTravaux - deductibleFromGlobal) + deficitInterets;
+
           if (reportableDeficit > 0) {
             cumulDeficitFoncier += reportableDeficit;
             deficitFoncierQueue.push({ amount: reportableDeficit, year: y });
           }
         } else {
+          // resultatFoncier >= 0 : bénéfice, imputer les déficits accumulés (FIFO)
           let taxable = resultatFoncier;
-          // Deduct accumulated deficits (FIFO, 10-year limit).
           let deficitUsed = 0;
           for (let d of deficitFoncierQueue) {
             if (taxable <= 0) break;
