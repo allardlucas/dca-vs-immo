@@ -1,0 +1,33 @@
+name: Déploiement GitHub Pages
+
+# Déclenché sur push vers main (quand une PR est mergée)
+on:
+  push:
+    branches:
+      - main
+
+# Permissions nécessaires pour pousser sur la branche gh-pages
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    name: Déployer sur GitHub Pages
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Déployer sur gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .
+          publish_branch: gh-pages
+          # Ne pas supprimer les fichiers existants (utile pour les previews)
+          keep_files: true
+          # Message de commit en français
+          commit_message: "Déploiement automatique [skip ci]"
+          user_name: "github-actions[bot]"
+          user_email: "github-actions[bot]@users.noreply.github.com"

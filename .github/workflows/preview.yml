@@ -1,0 +1,118 @@
+name: Preview par PR
+
+# Déclencheurs :
+# - PR ouverte/modifiée ciblant main → déploiement de la preview
+# - PR fermée ciblant main → nettoyage de la preview
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches:
+      - main
+
+# Permissions : écriture sur le contenu (pour gh-pages) et sur les PR (pour commenter)
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # Déploiement de la preview quand la PR est ouverte ou mise à jour
+  deploy-preview:
+    if: github.event.action != 'closed'
+    name: Déployer la preview pour PR #${{ github.event.number }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Déployer la preview dans preview/${{ github.event.number }}
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .
+          publish_branch: gh-pages
+          destination_dir: preview/${{ github.event.number }}
+          keep_files: true
+          commit_message: "Preview PR #${{ github.event.number }} [skip ci]"
+          user_name: "github-actions[bot]"
+          user_email: "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commenter l'URL de preview sur la PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.issue.number;
+            const previewUrl = `https://allardlucas.github.io/dca-vs-immo/preview/${prNumber}/`;
+
+            const body = `## 🚀 Preview déployée
+
+            La preview de cette PR est disponible ici :
+
+            👉 [${previewUrl}](${previewUrl})
+
+            > La preview sera automatiquement supprimée quand la PR sera fermée.`;
+
+            // Chercher un commentaire existant du bot pour le mettre à jour
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            const botComment = comments.find(
+              (c) =>
+                c.user.type === "Bot" &&
+                c.body.includes("Preview déployée")
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body,
+              });
+            }
+
+  # Nettoyage de la preview quand la PR est fermée
+  cleanup-preview:
+    if: github.event.action == 'closed'
+    name: Nettoyer la preview de PR #${{ github.event.number }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout de la branche gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+
+      - name: Supprimer le dossier de preview
+        run: |
+          PREVIEW_DIR="preview/${{ github.event.number }}"
+          if [ -d "$PREVIEW_DIR" ]; then
+            rm -rf "$PREVIEW_DIR"
+            echo "Dossier $PREVIEW_DIR supprimé."
+          else
+            echo "Dossier $PREVIEW_DIR introuvable, rien à nettoyer."
+          fi
+
+      - name: Commiter et pousser le nettoyage
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Vérifier s'il y a des changements à commiter
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "Aucun changement à commiter."
+          else
+            git add -A
+            git commit -m "Nettoyage preview PR #${{ github.event.number }} [skip ci]"
+            git push origin gh-pages
+          fi
