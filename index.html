@@ -152,6 +152,50 @@
   .result-card.dca .value { color: var(--green); }
   .result-card.immo .value { color: var(--orange); }
   .result-card.winner .value { color: var(--accent); font-size: 1.5rem; }
+  .result-card.mc-prob .value { color: var(--purple); }
+  .result-card.mc-prob .sub { color: var(--muted); }
+
+  /* Monte Carlo advanced */
+  .mc-advanced {
+    margin-top: 4px;
+    margin-bottom: 6px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    overflow: hidden;
+  }
+  .mc-advanced summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 8px 10px;
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-weight: 500;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+  }
+  .mc-advanced summary::-webkit-details-marker { display: none; }
+  .mc-advanced summary::before {
+    content: '▸';
+    margin-right: 6px;
+    color: var(--purple);
+    transition: transform 0.15s;
+  }
+  .mc-advanced[open] summary::before { transform: rotate(90deg); }
+  .mc-advanced .param-group { padding: 0 10px 10px; }
+  .mc-badge {
+    font-size: 0.65rem;
+    color: var(--purple);
+    background: rgba(162, 155, 254, 0.12);
+    border: 1px solid rgba(162, 155, 254, 0.25);
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
 
   /* Toggle fisc */
   .fisc-toggle {
@@ -360,6 +404,22 @@
         <label>Croissance annuelle <span id="dca-growth-val">8 %</span></label>
         <input type="range" id="dca-growth" min="0" max="20" value="8" step="0.5">
       </div>
+      <details id="mc-advanced" class="mc-advanced">
+        <summary>
+          Simulation avancée
+          <span id="mc-badge" class="mc-badge">σ = 15 % · 1 000 sim.</span>
+        </summary>
+        <div class="param-group cols-1">
+          <div class="param">
+            <label>Volatilité σ <span id="dca-volatility-val">15 %</span></label>
+            <input type="range" id="dca-volatility" min="5" max="30" value="15" step="0.5">
+          </div>
+          <div class="param">
+            <label>Simulations N <span id="dca-nsims-val">1 000</span></label>
+            <input type="range" id="dca-nsims" min="100" max="10000" value="1000" step="100">
+          </div>
+        </div>
+      </details>
       <div class="param">
         <label>Durée simulation <span id="duration-val">15 ans</span></label>
         <input type="range" id="duration" min="1" max="40" value="15" step="1">
@@ -527,6 +587,11 @@
         <div class="label">🏆 Gagnant</div>
         <div class="value" id="res-winner">—</div>
         <div class="sub" id="res-winner-diff">—</div>
+      </div>
+      <div class="result-card mc-prob">
+        <div class="label">🎲 Probabilité DCA</div>
+        <div class="value" id="res-mc-prob">—</div>
+        <div class="sub" id="res-mc-prob-sub">—</div>
       </div>
       <div class="result-card dca">
         <div class="label">Capital versé (DCA)</div>
@@ -1863,9 +1928,28 @@ function syncApport() {
 }
 
 // ====== LIENS SLIDERS ↔ LABELS ======
+function updateMcBadge() {
+  const sigma = +document.getElementById('dca-volatility').value;
+  const nsims = +document.getElementById('dca-nsims').value;
+  const sigmaStr = Number.isInteger(sigma) ? String(sigma) : sigma.toFixed(1).replace('.', ',');
+  document.getElementById('mc-badge').textContent =
+    `σ = ${sigmaStr} % · ${nsims.toLocaleString('fr-FR')} sim.`;
+}
+
+let mcDebounceTimer;
+function scheduleMcSimuler() {
+  clearTimeout(mcDebounceTimer);
+  mcDebounceTimer = setTimeout(simuler, 150);
+}
+
 const sliders = [
   { id: 'dca-initial', suffix: ' €', fmt: v => (+v).toLocaleString('fr-FR') },
   { id: 'dca-growth', suffix: ' %' },
+  { id: 'dca-volatility', suffix: ' %', fmt: v => {
+    const n = +v;
+    return Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ',');
+  }, mc: true },
+  { id: 'dca-nsims', fmt: v => (+v).toLocaleString('fr-FR'), mc: true },
   { id: 'duration', suffix: ' ans' },
   { id: 'immo-price', suffix: ' €', fmt: v => (+v).toLocaleString('fr-FR') },
   { id: 'immo-notaire', suffix: ' %' },
@@ -1895,11 +1979,18 @@ sliders.forEach(s => {
     const update = () => {
       const v = el.value;
       label.textContent = (s.fmt ? s.fmt(v) : v) + (s.suffix || '');
-      simuler();
+      if (s.mc) {
+        updateMcBadge();
+        scheduleMcSimuler();
+      } else {
+        simuler();
+      }
     };
     el.addEventListener('input', update);
   }
 });
+
+updateMcBadge();
 
 // Fiscalité DCA toggle
 document.querySelectorAll('#dca-tax-toggle button').forEach(btn => {
