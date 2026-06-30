@@ -152,6 +152,50 @@
   .result-card.dca .value { color: var(--green); }
   .result-card.immo .value { color: var(--orange); }
   .result-card.winner .value { color: var(--accent); font-size: 1.5rem; }
+  .result-card.mc-prob .value { color: var(--purple); }
+  .result-card.mc-prob .sub { color: var(--muted); }
+
+  /* Monte Carlo advanced */
+  .mc-advanced {
+    margin-top: 4px;
+    margin-bottom: 6px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    overflow: hidden;
+  }
+  .mc-advanced summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 8px 10px;
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-weight: 500;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+  }
+  .mc-advanced summary::-webkit-details-marker { display: none; }
+  .mc-advanced summary::before {
+    content: '▸';
+    margin-right: 6px;
+    color: var(--purple);
+    transition: transform 0.15s;
+  }
+  .mc-advanced[open] summary::before { transform: rotate(90deg); }
+  .mc-advanced .param-group { padding: 0 10px 10px; }
+  .mc-badge {
+    font-size: 0.65rem;
+    color: var(--purple);
+    background: rgba(162, 155, 254, 0.12);
+    border: 1px solid rgba(162, 155, 254, 0.25);
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
 
   /* Toggle fisc */
   .fisc-toggle {
@@ -360,6 +404,22 @@
         <label>Croissance annuelle <span id="dca-growth-val">8 %</span></label>
         <input type="range" id="dca-growth" min="0" max="20" value="8" step="0.5">
       </div>
+      <details id="mc-advanced" class="mc-advanced">
+        <summary>
+          Simulation avancée
+          <span id="mc-badge" class="mc-badge">σ = 15 % · 10 000 sim.</span>
+        </summary>
+        <div class="param-group cols-1">
+          <div class="param">
+            <label>Volatilité σ <span id="dca-volatility-val">15 %</span></label>
+            <input type="range" id="dca-volatility" min="0" max="30" value="15" step="0.5">
+          </div>
+          <div class="param">
+            <label>Simulations N <span id="dca-nsims-val">10 000</span></label>
+            <input type="range" id="dca-nsims" min="100" max="10000" value="10000" step="100">
+          </div>
+        </div>
+      </details>
       <div class="param">
         <label>Durée simulation <span id="duration-val">15 ans</span></label>
         <input type="range" id="duration" min="1" max="40" value="15" step="1">
@@ -414,7 +474,7 @@
       <div class="param">
         <label>Rendement brut <span id="immo-yield-val">5,0 %</span></label>
         <input type="range" id="immo-yield" min="1" max="12" value="5.0" step="0.1">
-        <div style="font-size:0.65rem;color:var(--muted);margin-top:2px">Loyer ≈ <span id="immo-rent-estimate">0 €/mois</span></div>
+        <div style="font-size:0.65rem;color:var(--muted);margin-top:2px">Loyer HC ≈ <span id="immo-rent-estimate">0 €/mois</span></div>
       </div>
     </div>
     <div class="param-group" style="margin-top:6px">
@@ -435,8 +495,8 @@
         <input type="range" id="immo-charges-growth" min="0" max="6" value="2" step="0.5">
       </div>
       <div class="param">
-        <label>Taxe foncière <span id="immo-taxe-val">800 €</span></label>
-        <input type="range" id="immo-taxe" min="0" max="8000" value="800" step="100">
+        <label>Taxe foncière <span id="immo-taxe-val">1 000 €</span></label>
+        <input type="range" id="immo-taxe" min="0" max="8000" value="1000" step="100">
       </div>
       <div class="param">
         <label>Charges copro <span id="immo-charges-val">50 €</span></label>
@@ -445,6 +505,7 @@
       <div class="param">
         <label>Travaux/entretien <span id="immo-travaux-val">0,5 %</span></label>
         <input type="range" id="immo-travaux" min="0" max="3" value="0.5" step="0.25">
+        <div style="font-size:0.65rem;color:var(--muted);margin-top:2px">Entretien ≈ <span id="immo-travaux-estimate">0 €/an</span></div>
       </div>
       <div class="param">
         <label>Vacance locative <span id="immo-vacance-val">2 %</span></label>
@@ -461,6 +522,10 @@
       <div class="param" id="immo-expertcomptable-wrapper">
         <label>Expert-comptable (LMNP) <span class="tip">?<span class="tip-text">Obligation déclarative BIC (liasse 2031). Uniquement pour le LMNP au réel. Non applicable au micro-BIC ni au régime foncier.</span></span> <span id="immo-expertcomptable-val">800 €</span></label>
         <input type="range" id="immo-expertcomptable" min="0" max="3000" value="800" step="100">
+      </div>
+      <div class="param">
+        <label>Assurance PNO <span class="tip">?<span class="tip-text">Propriétaire Non Occupant : obligatoire en copropriété. Moyenne nationale ~130 €/an (appartement). Déductible en régime réel.</span></span> <span id="immo-pno-val">130 €</span></label>
+        <input type="range" id="immo-pno" min="0" max="1000" value="130" step="10">
       </div>
       <div class="param">
         <label>Assurance GLI <span class="tip">?<span class="tip-text">Garantie Loyer Impayé : 2-3% du loyer, optionnelle. Déductible en LMNP réel.</span></span> <span id="immo-gli-val">2,0 %</span></label>
@@ -528,6 +593,11 @@
         <div class="value" id="res-winner">—</div>
         <div class="sub" id="res-winner-diff">—</div>
       </div>
+      <div class="result-card mc-prob">
+        <div class="label">🎲 Probabilité DCA</div>
+        <div class="value" id="res-mc-prob">—</div>
+        <div class="sub" id="res-mc-prob-sub">—</div>
+      </div>
       <div class="result-card dca">
         <div class="label">Capital versé (DCA)</div>
         <div class="value" id="res-dca-paid">—</div>
@@ -569,16 +639,20 @@
     <div class="chart-grid-3" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
       <div>
         <div class="chart-legend">
-          <span><span class="dot" style="background:var(--green)"></span> DCA (brut)</span>
-          <span><span class="dot" style="background:var(--orange)"></span> Immo (brut)</span>
+          <span><span class="dot" style="background:var(--green)"></span> DCA médiane</span>
+          <span><span class="dot" style="background:rgba(0,206,201,0.25);border:1px solid rgba(0,206,201,0.4)"></span> Zone P5–P95</span>
+          <span><span style="display:inline-block;width:14px;height:0;border-top:2px dashed var(--green);opacity:0.6"></span> DCA central (z=0)</span>
+          <span><span class="dot" style="background:var(--orange)"></span> Immo</span>
         </div>
         <canvas id="chart-brut" height="250"></canvas>
         <div style="font-size:0.65rem;color:var(--muted);text-align:center;margin-top:2px">Avant impôt</div>
       </div>
       <div>
         <div class="chart-legend">
-          <span><span class="dot" style="background:var(--green)"></span> DCA (net)</span>
-          <span><span class="dot" style="background:var(--orange)"></span> Immo (net)</span>
+          <span><span class="dot" style="background:var(--green)"></span> DCA médiane</span>
+          <span><span class="dot" style="background:rgba(0,206,201,0.25);border:1px solid rgba(0,206,201,0.4)"></span> Zone P5–P95</span>
+          <span><span style="display:inline-block;width:14px;height:0;border-top:2px dashed var(--green);opacity:0.6"></span> DCA central (z=0)</span>
+          <span><span class="dot" style="background:var(--orange)"></span> Immo</span>
         </div>
         <canvas id="chart-net" height="250"></canvas>
         <div style="font-size:0.65rem;color:var(--muted);text-align:center;margin-top:2px">Après impôt</div>
@@ -693,6 +767,129 @@ function annualizedReturn(final, totalPaid, y) {
   return Math.pow(final / totalPaid, 1 / y) - 1;
 }
 
+function dcaMonthlyFactorCagr(annualGrowth) {
+  // CAGR X du slider → facteur mensuel composé (1+X)^(1/12), pas (1 + X/12)
+  return Math.exp(Math.log(1 + annualGrowth) / 12);
+}
+
+function dcaMonthlyFactorGbmCentral(annualGrowth, volatility) {
+  // Même drift que Monte Carlo avec Z=0 : exp(μ_m − σ_m²/2)
+  const muM = Math.log(1 + annualGrowth) / 12;
+  const sigmaM = volatility / Math.sqrt(12);
+  return Math.exp(muM - (sigmaM * sigmaM) / 2);
+}
+
+function monthlyGrowthFactor(annualGrowth) {
+  return dcaMonthlyFactorCagr(annualGrowth);
+}
+
+function computeDcaGbmCentralPath({ dcaInitial, monthlyEfforts, growth, volatility, dcaTaxRate, years }) {
+  const monthlyFactor = dcaMonthlyFactorGbmCentral(growth, volatility);
+  const numYears = years != null ? years : Math.floor(monthlyEfforts.length / 12);
+  let value = dcaInitial;
+  let totalInvested = dcaInitial;
+  const yearlyBrut = [value];
+  const yearlyNet = [value - Math.max(0, (value - totalInvested) * dcaTaxRate)];
+
+  for (let monthIdx = 0; monthIdx < monthlyEfforts.length; monthIdx++) {
+    value = value * monthlyFactor + monthlyEfforts[monthIdx];
+    totalInvested += monthlyEfforts[monthIdx];
+    if ((monthIdx + 1) % 12 === 0) {
+      const gain = value - totalInvested;
+      yearlyBrut.push(value);
+      yearlyNet.push(value - Math.max(0, gain * dcaTaxRate));
+    }
+  }
+  return { yearlyBrut, yearlyNet };
+}
+
+function gaussianRandom() {
+  let u1, u2;
+  do {
+    u1 = Math.random();
+    u2 = Math.random();
+  } while (u1 === 0);
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+
+function percentileSorted(sortedValues, p) {
+  const n = sortedValues.length;
+  if (n === 0) return 0;
+  if (n === 1) return sortedValues[0];
+  const rank = p * (n - 1);
+  const lo = Math.floor(rank);
+  const hi = Math.ceil(rank);
+  if (lo === hi) return sortedValues[lo];
+  const frac = rank - lo;
+  return sortedValues[lo] * (1 - frac) + sortedValues[hi] * frac;
+}
+
+function runMonteCarloDCA({ dcaInitial, monthlyEfforts, growth, volatility, nSims, dcaTaxRate, years, immoFinal }) {
+  const sigmaM = volatility / Math.sqrt(12);
+  const numYears = years != null ? years : Math.floor(monthlyEfforts.length / 12);
+  const numMonths = monthlyEfforts.length;
+
+  const brutByYear = Array.from({ length: numYears + 1 }, () => []);
+  const netByYear = Array.from({ length: numYears + 1 }, () => []);
+  const finalsNet = [];
+  let wins = 0;
+
+  function applyDcaTax(value, totalInvested) {
+    const gain = value - totalInvested;
+    const tax = Math.max(0, gain * dcaTaxRate);
+    return value - tax;
+  }
+
+  for (let sim = 0; sim < nSims; sim++) {
+    let value = dcaInitial;
+    let totalInvested = dcaInitial;
+
+    brutByYear[0].push(value);
+    netByYear[0].push(applyDcaTax(value, totalInvested));
+
+    for (let monthIdx = 0; monthIdx < numMonths; monthIdx++) {
+      const z = gaussianRandom();
+      const factor = dcaMonthlyFactorGbmCentral(growth, volatility) * Math.exp(sigmaM * z);
+      const effort = monthlyEfforts[monthIdx];
+      value = value * factor + effort;
+      totalInvested += effort;
+
+      if ((monthIdx + 1) % 12 === 0) {
+        const year = (monthIdx + 1) / 12;
+        brutByYear[year].push(value);
+        netByYear[year].push(applyDcaTax(value, totalInvested));
+      }
+    }
+
+    const finalNet = netByYear[numYears][netByYear[numYears].length - 1];
+    finalsNet.push(finalNet);
+    if (finalNet > immoFinal) wins++;
+  }
+
+  const winProb = nSims > 0 ? wins / nSims : 0;
+
+  const yearlyBrut = [];
+  const yearlyNet = [];
+  for (let year = 0; year <= numYears; year++) {
+    const brutSorted = brutByYear[year].slice().sort((a, b) => a - b);
+    const netSorted = netByYear[year].slice().sort((a, b) => a - b);
+    yearlyBrut.push({
+      year,
+      p5: percentileSorted(brutSorted, 0.05),
+      p50: percentileSorted(brutSorted, 0.5),
+      p95: percentileSorted(brutSorted, 0.95),
+    });
+    yearlyNet.push({
+      year,
+      p5: percentileSorted(netSorted, 0.05),
+      p50: percentileSorted(netSorted, 0.5),
+      p95: percentileSorted(netSorted, 0.95),
+    });
+  }
+
+  return { winProb, yearlyBrut, yearlyNet, finalsNet };
+}
+
 // Exécute la simulation avec des paramètres donnés (fonction pure)
 function runSimulation(p) {
   const {
@@ -701,7 +898,7 @@ function runSimulation(p) {
     rent, rentGrowth, priceGrowth,
     taxeFonciere, charges, travaux, vacance, gestionPct, cfe, expertComptable,
     rentTaxRegime, rentTaxRate, rentTaxTMI,
-    gliPct = 0, saleFeesPct = 0.06, chargesGrowth = 0,
+    gliPct = 0, pnoAnnual = 130, saleFeesPct = 0.06, chargesGrowth = 0,
   } = p;
 
   // LMNP amort
@@ -788,11 +985,12 @@ function runSimulation(p) {
         const monthlyTaxe = currentTaxeFonciere / 12;
         const monthlyCharges = currentCharges;
         const monthlyTravaux = currentPrice * travaux / 12;
-        const monthlyAssurance = gliPct > 0 ? monthlyRent * gliPct : 0;
+        const monthlyGli = gliPct > 0 ? monthlyRent * gliPct : 0;
+        const monthlyPno = pnoAnnual / 12;
         const monthlyGestion = monthlyRent * gestionPct;
         const monthlyCFE = isLMNP ? cfe / 12 : 0;
         const monthlyExpertComptable = (rentTaxRegime === 'reel-bic') ? expertComptable / 12 : 0;
-        const monthExpenses = monthlyTaxe + monthlyCharges + monthlyTravaux + monthlyAssurance + monthlyGestion + monthlyCFE + monthlyExpertComptable;
+        const monthExpenses = monthlyTaxe + monthlyCharges + monthlyTravaux + monthlyGli + monthlyPno + monthlyGestion + monthlyCFE + monthlyExpertComptable;
         totalExpenses += monthExpenses;
         annualExpenses += monthExpenses;
 
@@ -831,7 +1029,7 @@ function runSimulation(p) {
 
         const dcaEffort = Math.max(0, -monthlyCF);
         monthlyEfforts.push(dcaEffort);
-        dcaValue = dcaValue * (1 + growth / 12) + dcaEffort;
+        dcaValue = dcaValue * dcaMonthlyFactorCagr(growth) + dcaEffort;
         dcaTotalInvested += dcaEffort;
       }
 
@@ -1112,13 +1310,15 @@ function simuler() {
   const taxeFonciere= +document.getElementById('immo-taxe').value;
   const charges     = +document.getElementById('immo-charges').value;
   const travaux     = +document.getElementById('immo-travaux').value / 100;
+  const travauxAnnual = Math.round(price * travaux);
+  document.getElementById('immo-travaux-estimate').textContent = travauxAnnual.toLocaleString('fr-FR') + ' €/an';
   const vacance     = +document.getElementById('immo-vacance').value / 100;
   const gestionPct  = +document.getElementById('immo-gestion').value / 100;
   const cfe        = +document.getElementById('immo-cfe').value;
   const expertComptable = +document.getElementById('immo-expertcomptable').value;
   const rentTaxRegime = document.querySelector('#rent-tax-toggle .active').dataset.value;
 
-  // GLI paramétrable
+  const pnoAnnual = +document.getElementById('immo-pno').value;
   const gliPct = +document.getElementById('immo-gli').value / 100;
 
   // Frais de revente paramétrables
@@ -1128,7 +1328,7 @@ function simuler() {
   const chargesGrowth = +document.getElementById('immo-charges-growth').value / 100;
 
   // Coûts mensuels (hors crédit) — ne dépendent pas de l'apport
-  const monthlyCosts = (taxeFonciere + charges * 12 + price * travaux + (gliPct > 0 ? rent * 12 * gliPct : 0) + (rentTaxRegime === 'reel-bic' ? expertComptable : 0)) / 12;
+  const monthlyCosts = (taxeFonciere + pnoAnnual + charges * 12 + price * travaux + (gliPct > 0 ? rent * 12 * gliPct : 0) + (rentTaxRegime === 'reel-bic' ? expertComptable : 0)) / 12;
 
   // L'apport initial est partagé (down = slider apport, dcaInitial synchro)
   down = dcaInitial;
@@ -1146,7 +1346,20 @@ function simuler() {
     rent, rentGrowth, priceGrowth,
     taxeFonciere, charges, travaux, vacance, gestionPct, cfe, expertComptable,
     rentTaxRegime, rentTaxRate, rentTaxTMI: rentTaxTMI,
-    gliPct, saleFeesPct, chargesGrowth,
+    gliPct, pnoAnnual, saleFeesPct, chargesGrowth,
+  });
+
+  const volatility = +document.getElementById('dca-volatility').value / 100;
+  const nSims = +document.getElementById('dca-nsims').value;
+  let mcResult = runMonteCarloDCA({
+    dcaInitial,
+    monthlyEfforts: simResult.monthlyEfforts,
+    growth,
+    volatility,
+    nSims,
+    dcaTaxRate,
+    years,
+    immoFinal: simResult.immoFinal,
   });
 
   const {
@@ -1181,11 +1394,11 @@ function simuler() {
   const lastIsLMNP = rentTaxRegime === 'micro-bic' || rentTaxRegime === 'reel-bic';
   const lastEffGestion = lastRentNet * gestionPct;
   const gliAmount = gliPct > 0 ? currentRent * 12 * gliPct : 0;
-  const lastEffCharges = (currentTaxeFonciereRecap + currentChargesRecap * 12 + currentPrice * travaux + gliAmount + (lastIsLMNP ? cfe : 0) + (rentTaxRegime === 'reel-bic' ? expertComptable : 0)) / 12;
+  const lastEffCharges = (currentTaxeFonciereRecap + pnoAnnual + currentChargesRecap * 12 + currentPrice * travaux + gliAmount + (lastIsLMNP ? cfe : 0) + (rentTaxRegime === 'reel-bic' ? expertComptable : 0)) / 12;
 
   // Impôt mensuel de la dernière année (selon régime)
   const lastAnnualRent = lastRentNet * 12;
-  const lastAnnualCharges = (currentTaxeFonciereRecap + currentChargesRecap * 12 + currentPrice * travaux + gliAmount + (lastIsLMNP ? cfe : 0) + (rentTaxRegime === 'reel-bic' ? expertComptable : 0)) + lastEffGestion * 12;
+  const lastAnnualCharges = (currentTaxeFonciereRecap + pnoAnnual + currentChargesRecap * 12 + currentPrice * travaux + gliAmount + (lastIsLMNP ? cfe : 0) + (rentTaxRegime === 'reel-bic' ? expertComptable : 0)) + lastEffGestion * 12;
   let lastMonthlyTax;
   const lastInterest = years <= loanYears && remainingLoan > 0 ? remainingLoan * monthlyRate * 12 : 0;
   if (rentTaxRegime === 'micro-foncier') {
@@ -1244,6 +1457,10 @@ function simuler() {
     winnerEl.textContent = '⚖️ Égalité';
     winnerDiffEl.textContent = "Moins de 1 000 € d'écart";
   }
+
+  document.getElementById('res-mc-prob').textContent = `${Math.round(mcResult.winProb * 100)} %`;
+  document.getElementById('res-mc-prob-sub').textContent =
+    `DCA > Immo dans ${Math.round(mcResult.winProb * 100)} % des scénarios`;
 
   document.getElementById('res-dca-paid').textContent = format(dcaTotalInvested);
   document.getElementById('res-immo-paid').textContent = format(immoEffectiveCapital);
@@ -1320,16 +1537,39 @@ function simuler() {
   document.getElementById('table-summary').textContent = `An 0 → An ${years} · ${years+1} lignes · Crédit ${loanYears} ans`;
 
   // --- CHARTS ---
+  const centralPath = computeDcaGbmCentralPath({
+    dcaInitial,
+    monthlyEfforts: simResult.monthlyEfforts,
+    growth,
+    volatility,
+    dcaTaxRate,
+    years,
+  });
+
   // 1. Avant impôt
   drawLineChart('chart-brut', years, [
-    { label: 'DCA (brut)', color: '#00cec9', data: dcaYears.map(d => Math.round(d.value)) },
+    {
+      confidenceBand: true,
+      p5: mcResult.yearlyBrut.map(d => Math.round(d.p5)),
+      p95: mcResult.yearlyBrut.map(d => Math.round(d.p95)),
+      fillColor: 'rgba(0, 206, 201, 0.15)',
+    },
+    { label: 'DCA médiane (MC)', color: '#00cec9', data: mcResult.yearlyBrut.map(d => Math.round(d.p50)) },
+    { label: 'DCA central (z=0)', color: '#00cec9', data: centralPath.yearlyBrut.map(Math.round), dashed: true, opacity: 0.6 },
     { label: 'Immo (brut)', color: '#fdcb6e', data: immoYears.map(d => Math.round(d.netEquityBrut)) },
   ]);
   enableChartTooltips('chart-brut');
 
   // 2. Après impôt
   drawLineChart('chart-net', years, [
-    { label: 'DCA (net)', color: '#00cec9', data: dcaYears.map(d => Math.round(d.netValue)) },
+    {
+      confidenceBand: true,
+      p5: mcResult.yearlyNet.map(d => Math.round(d.p5)),
+      p95: mcResult.yearlyNet.map(d => Math.round(d.p95)),
+      fillColor: 'rgba(0, 206, 201, 0.15)',
+    },
+    { label: 'DCA médiane (MC)', color: '#00cec9', data: mcResult.yearlyNet.map(d => Math.round(d.p50)) },
+    { label: 'DCA central (z=0)', color: '#00cec9', data: centralPath.yearlyNet.map(Math.round), dashed: true, opacity: 0.6 },
     { label: 'Immo (net)', color: '#fdcb6e', data: immoYears.map(d => Math.round(d.netEquity)) },
   ]);
   enableChartTooltips('chart-net');
@@ -1395,7 +1635,7 @@ function simuler() {
     rent, rentGrowth, priceGrowth,
     taxeFonciere, charges, travaux, vacance, gestionPct, cfe, expertComptable,
     rentTaxRegime, rentTaxRate, rentTaxTMI: rentTaxTMI,
-    gliPct, saleFeesPct, chargesGrowth,
+    gliPct, pnoAnnual, saleFeesPct, chargesGrowth,
   });
 }
 
@@ -1420,10 +1660,20 @@ function drawLineChart(canvasId, count, series, opts = {}) {
   // Find min/max excluding horizontal-line series
   let minVal = Infinity, maxVal = -Infinity;
   for (const s of series) {
-    if (s.horizontalLine) continue;
+    if (s.horizontalLine || s.confidenceBand) continue;
+    if (!s.data) continue;
     for (const v of s.data) {
       if (!isNaN(v) && v < minVal) minVal = v;
       if (!isNaN(v) && v > maxVal) maxVal = v;
+    }
+  }
+  for (const s of series) {
+    if (s.confidenceBand) {
+      for (let i = 0; i <= count; i++) {
+        const lo = s.p5[i], hi = s.p95[i];
+        if (lo != null && !isNaN(lo) && lo < minVal) minVal = lo;
+        if (hi != null && !isNaN(hi) && hi > maxVal) maxVal = hi;
+      }
     }
   }
   if (minVal === Infinity) { minVal = 0; maxVal = 1000; }
@@ -1480,8 +1730,20 @@ function drawLineChart(canvasId, count, series, opts = {}) {
   ctx.font = '9px sans-serif';
   ctx.fillText(opts.xLabel || 'Années', w / 2, h - 4);
 
+  // Confidence bands (under lines)
+  for (const s of series) {
+    if (!s.confidenceBand) continue;
+    ctx.beginPath();
+    for (let i = 0; i <= count; i++) ctx.lineTo(x(i), y(s.p95[i]));
+    for (let i = count; i >= 0; i--) ctx.lineTo(x(i), y(s.p5[i]));
+    ctx.closePath();
+    ctx.fillStyle = s.fillColor || 'rgba(0, 206, 201, 0.15)';
+    ctx.fill();
+  }
+
   // Draw series
   for (const s of series) {
+    if (s.confidenceBand) continue;
     if (s.horizontalLine) {
       // Horizontal dashed line at the average of the data values
       const mean = s.data.reduce((a, b) => a + b, 0) / s.data.length;
@@ -1512,6 +1774,9 @@ function drawLineChart(canvasId, count, series, opts = {}) {
     }
 
     // Regular line
+    ctx.save();
+    if (s.dashed) ctx.setLineDash([4, 4]);
+    if (s.opacity != null) ctx.globalAlpha = s.opacity;
     ctx.strokeStyle = s.color;
     ctx.lineWidth = s.lineWidth || 2.5;
     ctx.lineJoin = 'round';
@@ -1525,20 +1790,23 @@ function drawLineChart(canvasId, count, series, opts = {}) {
       else ctx.lineTo(px, py);
     }
     ctx.stroke();
+    ctx.restore();
 
-    // Dots at visible intervals
-    const dotStep = opts.xTickStep != null ? opts.xTickStep : 5;
-    for (let i = 0; i <= count; i++) {
-      const v = s.data[i];
-      if (v === undefined || isNaN(v)) continue;
-      if (i % dotStep === 0 || i === count) {
-        ctx.beginPath();
-        ctx.arc(x(i), y(v), 3, 0, Math.PI * 2);
-        ctx.fillStyle = s.color;
-        ctx.fill();
-        ctx.strokeStyle = '#0f1117';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+    // Dots at visible intervals (skip dashed reference lines)
+    if (!s.dashed) {
+      const dotStep = opts.xTickStep != null ? opts.xTickStep : 5;
+      for (let i = 0; i <= count; i++) {
+        const v = s.data[i];
+        if (v === undefined || isNaN(v)) continue;
+        if (i % dotStep === 0 || i === count) {
+          ctx.beginPath();
+          ctx.arc(x(i), y(v), 3, 0, Math.PI * 2);
+          ctx.fillStyle = s.color;
+          ctx.fill();
+          ctx.strokeStyle = '#0f1117';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
       }
     }
   }
@@ -1546,7 +1814,7 @@ function drawLineChart(canvasId, count, series, opts = {}) {
   if (!window._chartPoints) window._chartPoints = {};
   const pts = [];
   for (const s of series) {
-    if (s.horizontalLine) continue;
+    if (s.horizontalLine || s.confidenceBand) continue;
     for (let i = 0; i <= count; i++) {
       const v = s.data[i];
       if (v === undefined || isNaN(v)) continue;
@@ -1771,9 +2039,28 @@ function syncApport() {
 }
 
 // ====== LIENS SLIDERS ↔ LABELS ======
+function updateMcBadge() {
+  const sigma = +document.getElementById('dca-volatility').value;
+  const nsims = +document.getElementById('dca-nsims').value;
+  const sigmaStr = Number.isInteger(sigma) ? String(sigma) : sigma.toFixed(1).replace('.', ',');
+  document.getElementById('mc-badge').textContent =
+    `σ = ${sigmaStr} % · ${nsims.toLocaleString('fr-FR')} sim.`;
+}
+
+let mcDebounceTimer;
+function scheduleMcSimuler() {
+  clearTimeout(mcDebounceTimer);
+  mcDebounceTimer = setTimeout(simuler, 150);
+}
+
 const sliders = [
   { id: 'dca-initial', suffix: ' €', fmt: v => (+v).toLocaleString('fr-FR') },
   { id: 'dca-growth', suffix: ' %' },
+  { id: 'dca-volatility', suffix: ' %', fmt: v => {
+    const n = +v;
+    return Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ',');
+  }, mc: true },
+  { id: 'dca-nsims', fmt: v => (+v).toLocaleString('fr-FR'), mc: true },
   { id: 'duration', suffix: ' ans' },
   { id: 'immo-price', suffix: ' €', fmt: v => (+v).toLocaleString('fr-FR') },
   { id: 'immo-notaire', suffix: ' %' },
@@ -1791,6 +2078,7 @@ const sliders = [
   { id: 'immo-yield', suffix: ' %', fmt: v => (+v).toFixed(1) },
   { id: 'immo-sale-fees', suffix: ' %' },
   { id: 'immo-charges-growth', suffix: ' %' },
+  { id: 'immo-pno', suffix: ' €', fmt: v => (+v).toLocaleString('fr-FR') },
   { id: 'immo-gli', suffix: ' %' },
 ];
 
@@ -1803,11 +2091,18 @@ sliders.forEach(s => {
     const update = () => {
       const v = el.value;
       label.textContent = (s.fmt ? s.fmt(v) : v) + (s.suffix || '');
-      simuler();
+      if (s.mc) {
+        updateMcBadge();
+        scheduleMcSimuler();
+      } else {
+        simuler();
+      }
     };
     el.addEventListener('input', update);
   }
 });
+
+updateMcBadge();
 
 // Fiscalité DCA toggle
 document.querySelectorAll('#dca-tax-toggle button').forEach(btn => {
