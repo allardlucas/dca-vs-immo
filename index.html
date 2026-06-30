@@ -462,13 +462,9 @@
         <label>Expert-comptable (LMNP) <span class="tip">?<span class="tip-text">Obligation déclarative BIC (liasse 2031). Uniquement pour le LMNP au réel. Non applicable au micro-BIC ni au régime foncier.</span></span> <span id="immo-expertcomptable-val">800 €</span></label>
         <input type="range" id="immo-expertcomptable" min="0" max="3000" value="800" step="100">
       </div>
-      <div class="param" id="immo-gli-wrapper">
+      <div class="param">
         <label>Assurance GLI <span class="tip">?<span class="tip-text">Garantie Loyer Impayé : 2-3% du loyer, optionnelle. Déductible en LMNP réel.</span></span> <span id="immo-gli-val">2,5 %</span></label>
-        <div class="fisc-toggle" id="immo-gli-mode-toggle" style="margin-bottom:4px">
-          <button data-value="off" class="active">Désactivée</button>
-          <button data-value="pct">% du loyer</button>
-        </div>
-        <input type="range" id="immo-gli" min="0" max="5" value="2.5" step="0.5" disabled>
+        <input type="range" id="immo-gli" min="0" max="5" value="2.5" step="0.5">
       </div>
     </div>
 
@@ -1123,8 +1119,7 @@ function simuler() {
   const rentTaxRegime = document.querySelector('#rent-tax-toggle .active').dataset.value;
 
   // GLI paramétrable
-  const gliMode = document.querySelector('#immo-gli-mode-toggle .active').dataset.value;
-  const gliPct = gliMode === 'pct' ? +document.getElementById('immo-gli').value / 100 : 0;
+  const gliPct = +document.getElementById('immo-gli').value / 100;
 
   // Frais de revente paramétrables
   const saleFeesPct = +document.getElementById('immo-sale-fees').value / 100;
@@ -1879,23 +1874,6 @@ document.querySelectorAll('#rent-tax-toggle button').forEach(btn => {
   });
 });
 
-// GLI toggle (désactivée / % du loyer)
-document.querySelectorAll('#immo-gli-mode-toggle button').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#immo-gli-mode-toggle button').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    const gliSlider = document.getElementById('immo-gli');
-    const gliLabel = document.getElementById('immo-gli-val');
-    if (btn.dataset.value === 'pct') {
-      gliSlider.disabled = false;
-      gliLabel.textContent = gliSlider.value + ' %';
-    } else {
-      gliSlider.disabled = true;
-      gliLabel.textContent = 'Désactivée';
-    }
-    simuler();
-  });
-});
 
 // ---- Initial render ----
 window.addEventListener('load', simuler);
