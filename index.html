@@ -411,17 +411,10 @@
         <label>Durée du crédit <span id="immo-loan-years-val">25 ans</span></label>
         <input type="range" id="immo-loan-years" min="1" max="30" value="25" step="1">
       </div>
-      <div class="param" id="immo-rent-mode-wrapper">
-        <label>Loyer <span id="immo-rent-val">1 000 €</span></label>
-        <div class="fisc-toggle" id="immo-rent-mode-toggle" style="margin-bottom:4px">
-          <button data-value="fixed" class="active">Loyer fixe</button>
-          <button data-value="yield">Rendement brut</button>
-        </div>
-        <input type="range" id="immo-rent" min="200" max="6000" value="1000" step="50">
-      </div>
-      <div class="param" id="immo-yield-wrapper" style="display:none">
+      <div class="param">
         <label>Rendement brut <span id="immo-yield-val">4,8 %</span></label>
         <input type="range" id="immo-yield" min="1" max="12" value="4.8" step="0.1">
+        <div style="font-size:0.65rem;color:var(--muted);margin-top:2px">Loyer ≈ <span id="immo-rent-estimate">0 €/mois</span></div>
       </div>
     </div>
     <div class="param-group" style="margin-top:6px">
@@ -1115,17 +1108,9 @@ function simuler() {
   const notaire     = +document.getElementById('immo-notaire').value / 100;
   const loanRate    = +document.getElementById('immo-rate').value / 100;
   const loanYears   = +document.getElementById('immo-loan-years').value;
-  let rent;
-  const rentMode = document.querySelector('#immo-rent-mode-toggle .active').dataset.value;
-  if (rentMode === 'yield') {
-    const yieldPct = +document.getElementById('immo-yield').value / 100;
-    rent = Math.round(price * yieldPct / 12);
-    // Synchro visuelle du slider loyer (désactivé)
-    document.getElementById('immo-rent').value = Math.min(Math.max(rent, 200), 6000);
-    document.getElementById('immo-rent-val').textContent = rent.toLocaleString('fr-FR') + ' €';
-  } else {
-    rent = +document.getElementById('immo-rent').value;
-  }
+  const yieldPct = +document.getElementById('immo-yield').value / 100;
+  const rent = Math.round(price * yieldPct / 12);
+  document.getElementById('immo-rent-estimate').textContent = rent.toLocaleString('fr-FR') + ' €/mois';
   const rentGrowth  = +document.getElementById('immo-rent-growth').value / 100;
   const priceGrowth = +document.getElementById('immo-price-growth').value / 100;
   const taxeFonciere= +document.getElementById('immo-taxe').value;
@@ -1799,7 +1784,6 @@ const sliders = [
   { id: 'immo-notaire', suffix: ' %' },
   { id: 'immo-rate', suffix: ' %', fmt: v => (+v).toFixed(2) },
   { id: 'immo-loan-years', suffix: ' ans' },
-  { id: 'immo-rent', suffix: ' €', fmt: v => (+v).toLocaleString('fr-FR') },
   { id: 'immo-rent-growth', suffix: ' %' },
   { id: 'immo-price-growth', suffix: ' %' },
   { id: 'immo-taxe', suffix: ' €', fmt: v => (+v).toLocaleString('fr-FR') },
@@ -1891,25 +1875,6 @@ document.querySelectorAll('#rent-tax-toggle button').forEach(btn => {
       'reel-bic': 'Réel LMNP',
     };
     document.getElementById('rent-tax-val').textContent = labels[regime] || regime;
-    simuler();
-  });
-});
-
-// Mode loyer / rendement brut
-document.querySelectorAll('#immo-rent-mode-toggle button').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#immo-rent-mode-toggle button').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    const rentMode = btn.dataset.value;
-    if (rentMode === 'yield') {
-      document.getElementById('immo-yield-wrapper').style.display = 'block';
-      document.getElementById('immo-rent').style.opacity = '0.4';
-      document.getElementById('immo-rent').disabled = true;
-    } else {
-      document.getElementById('immo-yield-wrapper').style.display = 'none';
-      document.getElementById('immo-rent').style.opacity = '1';
-      document.getElementById('immo-rent').disabled = false;
-    }
     simuler();
   });
 });
