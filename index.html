@@ -634,16 +634,20 @@
     <div class="chart-grid-3" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
       <div>
         <div class="chart-legend">
-          <span><span class="dot" style="background:var(--green)"></span> DCA (brut)</span>
-          <span><span class="dot" style="background:var(--orange)"></span> Immo (brut)</span>
+          <span><span class="dot" style="background:var(--green)"></span> DCA médiane</span>
+          <span><span class="dot" style="background:rgba(0,206,201,0.25);border:1px solid rgba(0,206,201,0.4)"></span> Zone P5–P95</span>
+          <span><span style="display:inline-block;width:14px;height:0;border-top:2px dashed var(--green);opacity:0.6"></span> DCA déterministe</span>
+          <span><span class="dot" style="background:var(--orange)"></span> Immo</span>
         </div>
         <canvas id="chart-brut" height="250"></canvas>
         <div style="font-size:0.65rem;color:var(--muted);text-align:center;margin-top:2px">Avant impôt</div>
       </div>
       <div>
         <div class="chart-legend">
-          <span><span class="dot" style="background:var(--green)"></span> DCA (net)</span>
-          <span><span class="dot" style="background:var(--orange)"></span> Immo (net)</span>
+          <span><span class="dot" style="background:var(--green)"></span> DCA médiane</span>
+          <span><span class="dot" style="background:rgba(0,206,201,0.25);border:1px solid rgba(0,206,201,0.4)"></span> Zone P5–P95</span>
+          <span><span style="display:inline-block;width:14px;height:0;border-top:2px dashed var(--green);opacity:0.6"></span> DCA déterministe</span>
+          <span><span class="dot" style="background:var(--orange)"></span> Immo</span>
         </div>
         <canvas id="chart-net" height="250"></canvas>
         <div style="font-size:0.65rem;color:var(--muted);text-align:center;margin-top:2px">Après impôt</div>
@@ -1496,14 +1500,28 @@ function simuler() {
   // --- CHARTS ---
   // 1. Avant impôt
   drawLineChart('chart-brut', years, [
-    { label: 'DCA (brut)', color: '#00cec9', data: dcaYears.map(d => Math.round(d.value)) },
+    {
+      confidenceBand: true,
+      p5: mcResult.yearlyBrut.map(d => Math.round(d.p5)),
+      p95: mcResult.yearlyBrut.map(d => Math.round(d.p95)),
+      fillColor: 'rgba(0, 206, 201, 0.15)',
+    },
+    { label: 'DCA médiane (MC)', color: '#00cec9', data: mcResult.yearlyBrut.map(d => Math.round(d.p50)) },
+    { label: 'DCA déterministe', color: '#00cec9', data: dcaYears.map(d => Math.round(d.value)), dashed: true, opacity: 0.6 },
     { label: 'Immo (brut)', color: '#fdcb6e', data: immoYears.map(d => Math.round(d.netEquityBrut)) },
   ]);
   enableChartTooltips('chart-brut');
 
   // 2. Après impôt
   drawLineChart('chart-net', years, [
-    { label: 'DCA (net)', color: '#00cec9', data: dcaYears.map(d => Math.round(d.netValue)) },
+    {
+      confidenceBand: true,
+      p5: mcResult.yearlyNet.map(d => Math.round(d.p5)),
+      p95: mcResult.yearlyNet.map(d => Math.round(d.p95)),
+      fillColor: 'rgba(0, 206, 201, 0.15)',
+    },
+    { label: 'DCA médiane (MC)', color: '#00cec9', data: mcResult.yearlyNet.map(d => Math.round(d.p50)) },
+    { label: 'DCA déterministe', color: '#00cec9', data: dcaYears.map(d => Math.round(d.netValue)), dashed: true, opacity: 0.6 },
     { label: 'Immo (net)', color: '#fdcb6e', data: immoYears.map(d => Math.round(d.netEquity)) },
   ]);
   enableChartTooltips('chart-net');
