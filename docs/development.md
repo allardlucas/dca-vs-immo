@@ -47,6 +47,7 @@ python tests/test_issue_16_deficit_foncier.py
 | `test_issue_5_lmnp_monthly_tax.py` | Estimation mensuelle d'impôt tenant compte de l'amortissement |
 | `test_issue_6_surtaxe_pv.py` | Surtaxe progressive sur PV > 50 000 € |
 | `test_issue_16_deficit_foncier.py` | Séparation déficit travaux / intérêts (plafond 10 700 €) |
+| `test_issue_7_monte_carlo.py` | Monte Carlo DCA GBM engine (issue #7) |
 
 ## Modifier le simulateur
 
