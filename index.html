@@ -1306,6 +1306,19 @@ function simuler() {
     gliPct, saleFeesPct, chargesGrowth,
   });
 
+  const volatility = +document.getElementById('dca-volatility').value / 100;
+  const nSims = +document.getElementById('dca-nsims').value;
+  let mcResult = runMonteCarloDCA({
+    dcaInitial,
+    monthlyEfforts: simResult.monthlyEfforts,
+    growth,
+    volatility,
+    nSims,
+    dcaTaxRate,
+    years,
+    immoFinal: simResult.immoFinal,
+  });
+
   const {
     dcaNet,
     immoFinal,
@@ -1401,6 +1414,10 @@ function simuler() {
     winnerEl.textContent = '⚖️ Égalité';
     winnerDiffEl.textContent = "Moins de 1 000 € d'écart";
   }
+
+  document.getElementById('res-mc-prob').textContent = `${Math.round(mcResult.winProb * 100)} %`;
+  document.getElementById('res-mc-prob-sub').textContent =
+    `DCA > Immo dans ${Math.round(mcResult.winProb * 100)} % des scénarios`;
 
   document.getElementById('res-dca-paid').textContent = format(dcaTotalInvested);
   document.getElementById('res-immo-paid').textContent = format(immoEffectiveCapital);
