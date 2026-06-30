@@ -693,6 +693,98 @@ function annualizedReturn(final, totalPaid, y) {
   return Math.pow(final / totalPaid, 1 / y) - 1;
 }
 
+function monthlyGrowthFactor(annualGrowth) {
+  return Math.exp(Math.log(1 + annualGrowth) / 12);
+}
+
+function gaussianRandom() {
+  let u1, u2;
+  do {
+    u1 = Math.random();
+    u2 = Math.random();
+  } while (u1 === 0);
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+
+function percentileSorted(sortedValues, p) {
+  const n = sortedValues.length;
+  if (n === 0) return 0;
+  if (n === 1) return sortedValues[0];
+  const rank = p * (n - 1);
+  const lo = Math.floor(rank);
+  const hi = Math.ceil(rank);
+  if (lo === hi) return sortedValues[lo];
+  const frac = rank - lo;
+  return sortedValues[lo] * (1 - frac) + sortedValues[hi] * frac;
+}
+
+function runMonteCarloDCA({ dcaInitial, monthlyEfforts, growth, volatility, nSims, dcaTaxRate, years, immoFinal }) {
+  const muM = Math.log(1 + growth) / 12;
+  const sigmaM = volatility / Math.sqrt(12);
+  const numYears = years != null ? years : Math.floor(monthlyEfforts.length / 12);
+  const numMonths = monthlyEfforts.length;
+
+  const brutByYear = Array.from({ length: numYears + 1 }, () => []);
+  const netByYear = Array.from({ length: numYears + 1 }, () => []);
+  const finalsNet = [];
+  let wins = 0;
+
+  function applyDcaTax(value, totalInvested) {
+    const gain = value - totalInvested;
+    const tax = Math.max(0, gain * dcaTaxRate);
+    return value - tax;
+  }
+
+  for (let sim = 0; sim < nSims; sim++) {
+    let value = dcaInitial;
+    let totalInvested = dcaInitial;
+
+    brutByYear[0].push(value);
+    netByYear[0].push(applyDcaTax(value, totalInvested));
+
+    for (let monthIdx = 0; monthIdx < numMonths; monthIdx++) {
+      const z = gaussianRandom();
+      const factor = Math.exp(muM - sigmaM * sigmaM / 2 + sigmaM * z);
+      const effort = monthlyEfforts[monthIdx];
+      value = value * factor + effort;
+      totalInvested += effort;
+
+      if ((monthIdx + 1) % 12 === 0) {
+        const year = (monthIdx + 1) / 12;
+        brutByYear[year].push(value);
+        netByYear[year].push(applyDcaTax(value, totalInvested));
+      }
+    }
+
+    const finalNet = netByYear[numYears][netByYear[numYears].length - 1];
+    finalsNet.push(finalNet);
+    if (finalNet > immoFinal) wins++;
+  }
+
+  const winProb = nSims > 0 ? wins / nSims : 0;
+
+  const yearlyBrut = [];
+  const yearlyNet = [];
+  for (let year = 0; year <= numYears; year++) {
+    const brutSorted = brutByYear[year].slice().sort((a, b) => a - b);
+    const netSorted = netByYear[year].slice().sort((a, b) => a - b);
+    yearlyBrut.push({
+      year,
+      p5: percentileSorted(brutSorted, 0.05),
+      p50: percentileSorted(brutSorted, 0.5),
+      p95: percentileSorted(brutSorted, 0.95),
+    });
+    yearlyNet.push({
+      year,
+      p5: percentileSorted(netSorted, 0.05),
+      p50: percentileSorted(netSorted, 0.5),
+      p95: percentileSorted(netSorted, 0.95),
+    });
+  }
+
+  return { winProb, yearlyBrut, yearlyNet, finalsNet };
+}
+
 // Exécute la simulation avec des paramètres donnés (fonction pure)
 function runSimulation(p) {
   const {
@@ -831,7 +923,7 @@ function runSimulation(p) {
 
         const dcaEffort = Math.max(0, -monthlyCF);
         monthlyEfforts.push(dcaEffort);
-        dcaValue = dcaValue * (1 + growth / 12) + dcaEffort;
+        dcaValue = dcaValue * monthlyGrowthFactor(growth) + dcaEffort;
         dcaTotalInvested += dcaEffort;
       }
 
