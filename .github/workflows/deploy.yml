@@ -25,6 +25,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: .
           publish_branch: gh-pages
+          exclude_assets: ".github,tests,docs,requirements.txt,.gitignore"
           # Ne pas supprimer les fichiers existants (utile pour les previews)
           keep_files: true
           # Message de commit en français
