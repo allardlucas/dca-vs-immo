@@ -367,11 +367,11 @@
     </div>
     <div style="margin-top:10px">
       <label style="font-size:0.75rem;color:var(--muted);font-weight:500;display:flex;justify-content:space-between;margin-bottom:4px">
-        Fiscalité des PV <span id="dca-tax-val">PEA (PS 18,6%)</span>
+        Fiscalité des PV <span id="dca-tax-val">Flat tax 31,4%</span>
       </label>
       <div class="fisc-toggle" id="dca-tax-toggle">
-        <button data-value="0.314">Flat tax 31,4%</button>
-        <button data-value="0.186" class="active">PEA (PS 18,6%)</button>
+        <button data-value="0.314" class="active">Flat tax 31,4%</button>
+        <button data-value="0.186">PEA (PS 18,6%)</button>
         <button data-value="tmi">TMI + PS</button>
       </div>
       <div id="tmi-group" style="display:none;margin-top:4px">
@@ -412,8 +412,8 @@
         <input type="range" id="immo-loan-years" min="1" max="30" value="25" step="1">
       </div>
       <div class="param">
-        <label>Rendement brut <span id="immo-yield-val">5,0 %</span></label>
-        <input type="range" id="immo-yield" min="1" max="12" value="5.0" step="0.1">
+        <label>Rendement brut <span id="immo-yield-val">4,8 %</span></label>
+        <input type="range" id="immo-yield" min="1" max="12" value="4.8" step="0.1">
         <div style="font-size:0.65rem;color:var(--muted);margin-top:2px">Loyer ≈ <span id="immo-rent-estimate">0 €/mois</span></div>
       </div>
     </div>
@@ -427,20 +427,20 @@
         <input type="range" id="immo-price-growth" min="0" max="10" value="3" step="0.5">
       </div>
       <div class="param">
-        <label>Frais de revente <span id="immo-sale-fees-val">5 %</span></label>
-        <input type="range" id="immo-sale-fees" min="0" max="8" value="5" step="0.5">
+        <label>Frais de revente <span id="immo-sale-fees-val">6 %</span></label>
+        <input type="range" id="immo-sale-fees" min="0" max="8" value="6" step="0.5">
       </div>
       <div class="param">
         <label>Croissance charges <span id="immo-charges-growth-val">2 %</span></label>
         <input type="range" id="immo-charges-growth" min="0" max="6" value="2" step="0.5">
       </div>
       <div class="param">
-        <label>Taxe foncière <span id="immo-taxe-val">800 €</span></label>
-        <input type="range" id="immo-taxe" min="0" max="8000" value="800" step="100">
+        <label>Taxe foncière <span id="immo-taxe-val">1 200 €</span></label>
+        <input type="range" id="immo-taxe" min="0" max="8000" value="1200" step="100">
       </div>
       <div class="param">
-        <label>Charges copro <span id="immo-charges-val">50 €</span></label>
-        <input type="range" id="immo-charges" min="0" max="800" value="50" step="25">
+        <label>Charges copro <span id="immo-charges-val">100 €</span></label>
+        <input type="range" id="immo-charges" min="0" max="800" value="100" step="25">
       </div>
       <div class="param">
         <label>Travaux/entretien <span id="immo-travaux-val">0,5 %</span></label>
@@ -463,8 +463,8 @@
         <input type="range" id="immo-expertcomptable" min="0" max="3000" value="800" step="100">
       </div>
       <div class="param">
-        <label>Assurance GLI <span class="tip">?<span class="tip-text">Garantie Loyer Impayé : 2-3% du loyer, optionnelle. Déductible en LMNP réel.</span></span> <span id="immo-gli-val">2,0 %</span></label>
-        <input type="range" id="immo-gli" min="0" max="5" value="2.0" step="0.5">
+        <label>Assurance GLI <span class="tip">?<span class="tip-text">Garantie Loyer Impayé : 2-3% du loyer, optionnelle. Déductible en LMNP réel.</span></span> <span id="immo-gli-val">2,5 %</span></label>
+        <input type="range" id="immo-gli" min="0" max="5" value="2.5" step="0.5">
       </div>
     </div>
 
@@ -479,13 +479,13 @@
     <!-- Régime fiscal des loyers -->
         <div style="margin-top:8px">
           <label style="font-size:0.75rem;color:var(--muted);font-weight:500;display:flex;justify-content:space-between;margin-bottom:4px">
-            Régime fiscal <span id="rent-tax-val">Réel LMNP</span>
+            Régime fiscal <span id="rent-tax-val">Micro-foncier</span>
           </label>
           <div class="fisc-toggle" id="rent-tax-toggle" style="margin-bottom:4px">
-            <button data-value="micro-foncier">Micro-foncier</button>
+            <button data-value="micro-foncier" class="active">Micro-foncier</button>
             <button data-value="reel-foncier">Réel (nu)</button>
             <button data-value="micro-bic">Micro-BIC</button>
-            <button data-value="reel-bic" class="active">Réel LMNP</button>
+            <button data-value="reel-bic">Réel LMNP</button>
           </div>
           <div class="info-row" id="rent-tax-desc">
             Nu · Abattement 30% sur les loyers, puis TMI + PS 17,2%
