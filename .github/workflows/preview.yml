@@ -32,6 +32,7 @@ jobs:
           publish_dir: .
           publish_branch: gh-pages
           destination_dir: preview/${{ github.event.number }}
+          exclude_assets: ".github,tests,docs,requirements.txt,.gitignore"
           keep_files: true
           commit_message: "Preview PR #${{ github.event.number }} [skip ci]"
           user_name: "github-actions[bot]"

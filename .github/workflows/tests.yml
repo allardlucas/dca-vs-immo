@@ -1,0 +1,34 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Tests de non-régression
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Configurer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer les dépendances
+        run: pip install -r requirements.txt
+
+      - name: Tests pytest
+        run: pytest tests/test_expert_comptable.py -v
+
+      - name: Scripts de non-régression fiscale
+        run: |
+          python tests/test_issue_4_lmnp_pv.py
+          python tests/test_issue_5_lmnp_monthly_tax.py
+          python tests/test_issue_6_surtaxe_pv.py
+          python tests/test_issue_16_deficit_foncier.py
