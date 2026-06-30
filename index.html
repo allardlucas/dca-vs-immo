@@ -1599,6 +1599,13 @@ function drawLineChart(canvasId, count, series, opts = {}) {
       if (!isNaN(v) && v < minVal) minVal = v;
       if (!isNaN(v) && v > maxVal) maxVal = v;
     }
+    if (s.confidenceBand) {
+      for (let i = 0; i <= count; i++) {
+        const lo = s.p5[i], hi = s.p95[i];
+        if (lo != null && !isNaN(lo) && lo < minVal) minVal = lo;
+        if (hi != null && !isNaN(hi) && hi > maxVal) maxVal = hi;
+      }
+    }
   }
   if (minVal === Infinity) { minVal = 0; maxVal = 1000; }
   if (minVal === maxVal) { minVal -= 1000; maxVal += 1000; }
@@ -1654,8 +1661,20 @@ function drawLineChart(canvasId, count, series, opts = {}) {
   ctx.font = '9px sans-serif';
   ctx.fillText(opts.xLabel || 'Années', w / 2, h - 4);
 
+  // Confidence bands (under lines)
+  for (const s of series) {
+    if (!s.confidenceBand) continue;
+    ctx.beginPath();
+    for (let i = 0; i <= count; i++) ctx.lineTo(x(i), y(s.p95[i]));
+    for (let i = count; i >= 0; i--) ctx.lineTo(x(i), y(s.p5[i]));
+    ctx.closePath();
+    ctx.fillStyle = s.fillColor || 'rgba(0, 206, 201, 0.15)';
+    ctx.fill();
+  }
+
   // Draw series
   for (const s of series) {
+    if (s.confidenceBand) continue;
     if (s.horizontalLine) {
       // Horizontal dashed line at the average of the data values
       const mean = s.data.reduce((a, b) => a + b, 0) / s.data.length;
@@ -1686,6 +1705,9 @@ function drawLineChart(canvasId, count, series, opts = {}) {
     }
 
     // Regular line
+    ctx.save();
+    if (s.dashed) ctx.setLineDash([4, 4]);
+    if (s.opacity != null) ctx.globalAlpha = s.opacity;
     ctx.strokeStyle = s.color;
     ctx.lineWidth = s.lineWidth || 2.5;
     ctx.lineJoin = 'round';
@@ -1699,20 +1721,23 @@ function drawLineChart(canvasId, count, series, opts = {}) {
       else ctx.lineTo(px, py);
     }
     ctx.stroke();
+    ctx.restore();
 
-    // Dots at visible intervals
-    const dotStep = opts.xTickStep != null ? opts.xTickStep : 5;
-    for (let i = 0; i <= count; i++) {
-      const v = s.data[i];
-      if (v === undefined || isNaN(v)) continue;
-      if (i % dotStep === 0 || i === count) {
-        ctx.beginPath();
-        ctx.arc(x(i), y(v), 3, 0, Math.PI * 2);
-        ctx.fillStyle = s.color;
-        ctx.fill();
-        ctx.strokeStyle = '#0f1117';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+    // Dots at visible intervals (skip dashed reference lines)
+    if (!s.dashed) {
+      const dotStep = opts.xTickStep != null ? opts.xTickStep : 5;
+      for (let i = 0; i <= count; i++) {
+        const v = s.data[i];
+        if (v === undefined || isNaN(v)) continue;
+        if (i % dotStep === 0 || i === count) {
+          ctx.beginPath();
+          ctx.arc(x(i), y(v), 3, 0, Math.PI * 2);
+          ctx.fillStyle = s.color;
+          ctx.fill();
+          ctx.strokeStyle = '#0f1117';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
       }
     }
   }
@@ -1720,7 +1745,7 @@ function drawLineChart(canvasId, count, series, opts = {}) {
   if (!window._chartPoints) window._chartPoints = {};
   const pts = [];
   for (const s of series) {
-    if (s.horizontalLine) continue;
+    if (s.horizontalLine || s.confidenceBand) continue;
     for (let i = 0; i <= count; i++) {
       const v = s.data[i];
       if (v === undefined || isNaN(v)) continue;
