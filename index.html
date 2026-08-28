@@ -43,6 +43,7 @@
     max-width: 1300px;
     margin: 0 auto;
     min-width: 0;
+    align-items: start;
   }
   @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
   .card {
@@ -53,6 +54,7 @@
     min-width: 0;
     max-width: 100%;
   }
+  .grid > .card:first-child { padding-bottom: 12px; }
   .card h2 {
     font-size: 0.95rem;
     font-weight: 600;
@@ -313,7 +315,7 @@
     align-items: center;
     gap: 12px;
     margin-bottom: 14px;
-    padding: 10px 14px;
+    padding: 0;
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -324,6 +326,7 @@
     width: 100%;
   }
   .effort-toggle {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -332,13 +335,20 @@
     font-size: 0.8rem;
     color: var(--muted);
     width: 100%;
+    padding: 10px 14px;
+    min-height: 44px;
   }
   .effort-toggle input {
     position: absolute;
-    opacity: 0;
-    width: 1px;
-    height: 1px;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     margin: 0;
+    opacity: 0;
+    cursor: pointer;
+    z-index: 1;
+    appearance: none;
+    -webkit-appearance: none;
   }
   .effort-switch {
     position: relative;
@@ -349,6 +359,8 @@
     background: var(--bg);
     border: 1px solid var(--border);
     transition: background 0.15s, border-color 0.15s;
+    pointer-events: none;
+    z-index: 0;
   }
   .effort-switch::after {
     content: '';
@@ -476,7 +488,7 @@
 
 <!-- Toggle : DCA suit l'immo -->
 <div class="effort-toggle-bar">
-  <label class="effort-toggle">
+  <label class="effort-toggle" for="dca-sync-toggle">
     <input type="checkbox" id="dca-sync-toggle" role="switch" aria-checked="true" checked>
     <span class="effort-switch" aria-hidden="true"></span>
     <span>📈 <b>DCA = même effort que l'immo</b> mois par mois · Apport partagé</span>
@@ -1841,9 +1853,13 @@ function drawLineChart(canvasId, count, series, opts = {}) {
   ctx.font = '10px sans-serif';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
+  const seenYLabels = new Set();
   for (let i = 0; i <= nGrid; i++) {
     const val = maxVal - (i / nGrid) * range;
-    ctx.fillText(formatShort(val), pad.left - 6, pad.top + (i / nGrid) * ch);
+    const txt = formatShort(val);
+    if (seenYLabels.has(txt)) continue;
+    seenYLabels.add(txt);
+    ctx.fillText(txt, pad.left - 6, pad.top + (i / nGrid) * ch);
   }
 
   // X-axis labels
