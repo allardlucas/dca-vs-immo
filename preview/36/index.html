@@ -41,6 +41,7 @@
     gap: 14px;
     max-width: 1300px;
     margin: 0 auto;
+    min-width: 0;
   }
   @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
   .card {
@@ -58,7 +59,7 @@
     align-items: center;
     gap: 8px;
   }
-  .card.full { grid-column: 1 / -1; }
+  .card.full { grid-column: 1 / -1; min-width: 0; }
   .param-group {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -250,6 +251,7 @@
   .chart-grid-3 > div,
   .chart-effort-wrap {
     position: relative;
+    min-width: 0;
   }
 
   @media (max-width: 900px) {
