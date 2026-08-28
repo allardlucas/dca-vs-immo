@@ -36,7 +36,10 @@ python tests/test_issue_4_lmnp_pv.py
 python tests/test_issue_5_lmnp_monthly_tax.py
 python tests/test_issue_6_surtaxe_pv.py
 python tests/test_issue_16_deficit_foncier.py
+python tests/test_issues_23_24_25_26.py
 ```
+
+Les scripts standalone (issues 4, 5, 6, 16, 23–26) ne sont pas collectés comme tests pytest : ils exposent des helpers `test_*` et s'exécutent via `python tests/…`. La CI fait de même : `pytest tests/` (en les ignorant) puis chaque script.
 
 ### Couverture des tests
 
@@ -46,8 +49,9 @@ python tests/test_issue_16_deficit_foncier.py
 | `test_issue_4_lmnp_pv.py` | Amortissement LMNP non déduit de la base de plus-value |
 | `test_issue_5_lmnp_monthly_tax.py` | Estimation mensuelle d'impôt tenant compte de l'amortissement |
 | `test_issue_6_surtaxe_pv.py` | Surtaxe progressive sur PV > 50 000 € |
-| `test_issue_16_deficit_foncier.py` | Séparation déficit travaux / intérêts (plafond 10 700 €) |
 | `test_issue_7_monte_carlo.py` | Monte Carlo DCA GBM engine (issue #7) |
+| `test_issue_16_deficit_foncier.py` | Séparation déficit travaux / intérêts (plafond 10 700 €) |
+| `test_issues_23_24_25_26.py` | Amortissement LMNP (base + notaire), GLI, frais de revente, indexation des charges |
 
 ## Modifier le simulateur
 
@@ -58,8 +62,8 @@ python tests/test_issue_16_deficit_foncier.py
 
 ## Déploiement
 
-- **Production** — merge sur `main` → workflow [deploy.yml](../.github/workflows/deploy.yml) → [GitHub Pages](https://allardlucas.github.io/dca-vs-immo/)
-- **Preview PR** — chaque pull request obtient une URL de preview commentée automatiquement
+- **Production** — un push (merge) sur `main` déclenche le workflow [tests.yml](../.github/workflows/tests.yml) : le job de tests exécute toute la suite (`pytest tests/` plus les scripts de non-régression). Le job de déploiement GitHub Pages (`peaceiris/actions-gh-pages`, `publish_dir: .`, mêmes `exclude_assets` / `keep_files`) ne s'exécute **que si ce job de tests a réussi** (`needs: test`). Un échec de tests bloque le déploiement prod ; il n'y a plus de déploiement parallèle indépendant. Site : [allardlucas.github.io/dca-vs-immo](https://allardlucas.github.io/dca-vs-immo/)
+- **Preview PR** — inchangé : chaque pull request ciblant `main` obtient une URL de preview commentée automatiquement ([preview.yml](../.github/workflows/preview.yml)), indépendamment des tests. La preview est nettoyée à la fermeture de la PR.
 
 ## Structure du dépôt
 
